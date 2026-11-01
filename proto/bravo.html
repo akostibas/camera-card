@@ -1,0 +1,252 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cameras B</title>
+<style>
+/* Player pinned on top; below it filters, then a feed: live tiles first, then events grouped by day, newest first. */
+:root {
+  --ground: #dfe3e8; --bg: #f4f5f7; --surface: #ffffff; --line: #e1e4e9; --text: #16191d; --dim: #6b7380;
+  --accent: #2f6fdb; --accent-soft: #2f6fdb22; --live: #d93a30;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --ground: #050607; --bg: #0f1114; --surface: #1a1d22; --line: #2a2e35; --text: #e9ebee; --dim: #8f97a3;
+  --accent: #6a9cf0; --accent-soft: #6a9cf028; --live: #ef5a4f; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --ground: #050607; --bg: #0f1114; --surface: #1a1d22; --line: #2a2e35; --text: #e9ebee; --dim: #8f97a3;
+  --accent: #6a9cf0; --accent-soft: #6a9cf028; --live: #ef5a4f; color-scheme: dark; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; background: var(--ground); color: var(--text); font: 15px/1.35 var(--font); }
+#phone { width: min(390px, 100vw); height: min(844px, 100%); margin: 0 auto; background: var(--bg); display: flex; flex-direction: column; overflow: hidden; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+#video { position: relative; aspect-ratio: 16 / 9; flex: none; display: grid; place-items: center; overflow: hidden; user-select: none; background: #000; }
+#cap { max-width: 82%; text-align: center; color: #fff; font-size: 17px; font-weight: 500; text-shadow: 0 1px 3px #0009; text-wrap: balance; }
+#pill { position: absolute; left: 10px; bottom: 10px; background: var(--live); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .06em; padding: 3px 8px; border-radius: 4px; }
+#ctrl { position: absolute; inset: 0; background: #0006; display: grid; grid-template-rows: 1fr auto; }
+#ctrl .mid { display: flex; align-items: center; justify-content: center; gap: 36px; color: #fff; }
+#ctrl .mid button { font-size: 15px; width: 48px; height: 48px; border-radius: 50%; background: #0005; }
+#ctrl .mid #pp { font-size: 22px; width: 60px; height: 60px; }
+#ctrl .bot { display: flex; align-items: center; gap: 8px; padding: 6px 12px 10px; color: #fff; font-size: 12px; font-variant-numeric: tabular-nums; }
+#ctrl input { flex: 1; accent-color: #fff; }
+#toast { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: #000c; color: #fff; padding: 7px 14px; border-radius: 16px; font-size: 13px; }
+
+#pbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--line); min-height: 40px; }
+#pinfo { flex: 1; min-width: 0; }
+#pinfo b { display: block; font-size: 15px; }
+#pinfo span { color: var(--dim); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.pbtn { height: 34px; padding: 0 12px; border-radius: 17px; background: var(--accent-soft); color: var(--accent); font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; gap: 5px; }
+.pbtn.icon { width: 34px; padding: 0; justify-content: center; }
+.pbtn:disabled { opacity: .35; }
+
+#filters { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; background: var(--bg); border-bottom: 1px solid var(--line); }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding: 0 12px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: none; height: 32px; padding: 0 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); font-size: 14px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.chip[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--live); }
+.chip.date { position: relative; }
+.chip.date input { position: absolute; inset: 0; opacity: 0; width: 100%; }
+
+#feed { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+.sec-h { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 10px 12px 6px; display: flex; flex-direction: column; gap: 6px; }
+.sec-h h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--dim); display: flex; justify-content: space-between; }
+.hours { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; }
+.hours button { height: 18px; border-radius: 3px; background: var(--line); position: relative; }
+.hours button i { position: absolute; inset: 0; border-radius: 3px; background: var(--accent); }
+.hourlbl { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
+#tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 12px 6px; }
+.tile { aspect-ratio: 16 / 9; border-radius: 8px; position: relative; overflow: hidden; color: #fff; text-align: left; padding: 6px 8px; display: flex; flex-direction: column; justify-content: space-between; }
+.tile b { font-size: 12px; text-shadow: 0 1px 2px #0008; display: flex; gap: 5px; align-items: center; }
+.tile b i { width: 6px; height: 6px; border-radius: 50%; background: var(--live); }
+.tile span { font-size: 10.5px; line-height: 1.25; text-shadow: 0 1px 2px #0009; }
+.tile.on { outline: 3px solid var(--accent); outline-offset: -3px; }
+.list { background: var(--surface); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.ev { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+.ev:last-child { border-bottom: 0; }
+.ev.on { background: var(--accent-soft); }
+.sw { width: 52px; height: 30px; border-radius: 5px; flex: none; position: relative; }
+.sw em { position: absolute; right: -5px; top: -6px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--text); color: var(--bg); font: 600 11px/18px var(--font); text-align: center; padding: 0 4px; font-style: normal; }
+.ev .t { width: 66px; font-weight: 600; font-variant-numeric: tabular-nums; flex: none; }
+.ev .t.now { color: var(--live); }
+.ev .m { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ev .m span { color: var(--dim); font-size: 12.5px; }
+.empty { padding: 14px 12px; color: var(--dim); font-size: 13.5px; }
+#more { padding: 18px; text-align: center; color: var(--dim); font-size: 13px; }
+</style>
+<div id="phone">
+  <div id="video">
+    <div id="cap"></div><div id="pill">● LIVE</div>
+    <div id="ctrl" hidden>
+      <div class="mid"><button id="back10" aria-label="Back 10 seconds">−10</button><button id="pp" aria-label="Play or pause">❚❚</button><button id="fwd10" aria-label="Forward 10 seconds">+10</button></div>
+      <div class="bot"><span id="tcur">0:00</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek"><span id="tdur">0:00</span></div>
+    </div>
+    <div id="toast" hidden></div>
+  </div>
+  <div id="pbar">
+    <div id="pinfo"><b id="ptitle"></b><span id="psub"></span></div>
+    <button class="pbtn icon" id="prev" aria-label="Previous clip">‹</button>
+    <button class="pbtn icon" id="next" aria-label="Next clip">›</button>
+    <button class="pbtn" id="save" aria-label="Save clip">⤓ Save</button>
+    <button class="pbtn" id="golive" aria-label="Watch live">● Live</button>
+  </div>
+  <div id="filters">
+    <div class="chips" id="camchips" role="toolbar" aria-label="Cameras"></div>
+    <div class="chips" id="kindchips" role="toolbar" aria-label="Kind of activity"></div>
+  </div>
+  <div id="feed"></div>
+</div>
+<script src="harness.js"></script>
+<script>
+const { cameras, now, clips, frame, log } = PROTO;
+const $ = (id) => document.getElementById(id);
+const MIN = 6e4, H = 36e5, DAY = 864e5, DAYS = 45;
+const camName = (id) => cameras.find((c) => c.id === id).name;
+const fmtT = (t) => new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+const dayStart = (t) => new Date(t).setHours(0, 0, 0, 0);
+const addDays = (t, n) => { const d = new Date(t); d.setDate(d.getDate() + n); return d.setHours(0, 0, 0, 0); };
+const dayName = (t) => { const d = Math.round((dayStart(now()) - t) / DAY); const s = new Date(t).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); return d === 0 ? 'Today · ' + s : d === 1 ? 'Yesterday · ' + s : s; };
+const dur = (ms) => { const s = Math.round(ms / 1000); return s < 60 ? s + 's' : s < 3600 ? Math.round(s / 60) + ' min' : (s / 3600).toFixed(s < 36000 ? 1 : 0) + ' h'; };
+const mmss = (s) => { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s % 60).padStart(2, '0'); };
+const KINDS = [['all', 'Everything'], ['person', 'People'], ['vehicle', 'Vehicles'], ['animal', 'Animals'], ['motion', 'Other motion']];
+const KLABEL = { person: 'Person', vehicle: 'Vehicle', animal: 'Animal' };
+
+let cam = 'all', kind = 'all';
+const match = (c) => kind === 'all' || (kind === 'motion' ? !c.tags.length : c.tags.includes(kind));
+
+// ---- Player: a recording (from an event's queue) or a camera's live view.
+let src = { live: 'crawl' }, queue = [], qi = 0, sec = 0, playing = true, ctrlTimer;
+function playEvent(ev, i = 0) { queue = ev.clips; qi = i; startClip(); }
+function startClip() { src = queue[qi]; sec = 0; playing = true; log('play', { clip: src.id }); render(); markOn(); }
+function goLive(id) { src = { live: id }; queue = []; log('live', { cam: id }); $('ctrl').hidden = true; render(); markOn(); }
+function render() {
+  const f = frame(src, sec);
+  $('video').style.background = f.color; $('cap').textContent = f.caption;
+  $('pill').hidden = !src.live;
+  $('save').hidden = $('prev').hidden = $('next').hidden = !!src.live;
+  $('golive').hidden = !!src.live;
+  if (src.live) { $('ptitle').textContent = camName(src.live); $('psub').textContent = 'Live now · ' + fmtT(now()); return; }
+  const d = (src.end - src.start) / 1000;
+  $('ptitle').textContent = camName(src.cam);
+  $('psub').textContent = `${dayName(dayStart(src.start)).replace(' · ', ', ')} ${new Date(src.start + sec * 1000).toLocaleTimeString('en-US')}` + (queue.length > 1 ? ` · clip ${qi + 1} of ${queue.length}` : '');
+  $('prev').disabled = qi === 0; $('next').disabled = qi >= queue.length - 1;
+  $('seek').value = Math.round((sec / d) * 1000); $('tcur').textContent = mmss(sec); $('tdur').textContent = mmss(d);
+  $('pp').textContent = playing ? '❚❚' : '▶';
+}
+let last = Date.now();
+setInterval(() => {
+  const n = Date.now(), dt = (n - last) / 1000; last = n;
+  if (!src.live && playing) {
+    sec += dt;
+    // Calm auto-advance: an event's clips play back to back, then stop.
+    if (sec >= (src.end - src.start) / 1000) { if (qi < queue.length - 1) { qi++; startClip(); } else { sec = (src.end - src.start) / 1000; playing = false; } }
+  }
+  render();
+}, 250);
+function showCtrl() { if (src.live) return; $('ctrl').hidden = false; clearTimeout(ctrlTimer); ctrlTimer = setTimeout(() => ($('ctrl').hidden = true), 3500); }
+$('video').addEventListener('pointerdown', (e) => { if (!e.target.closest('#ctrl button, #ctrl input')) { if ($('ctrl').hidden) showCtrl(); else $('ctrl').hidden = true; } else showCtrl(); });
+$('pp').onclick = () => { playing = !playing; render(); };
+$('back10').onclick = () => { sec = Math.max(0, sec - 10); render(); };
+$('fwd10').onclick = () => { sec = Math.min((src.end - src.start) / 1000, sec + 10); render(); };
+$('seek').oninput = (e) => { sec = (e.target.value / 1000) * (src.end - src.start) / 1000; render(); };
+$('prev').onclick = () => { if (qi > 0) { qi--; startClip(); } };
+$('next').onclick = () => { if (qi < queue.length - 1) { qi++; startClip(); } };
+$('save').onclick = () => { log('download', { clip: src.id }); toast(`Saved ${camName(src.cam)} ${fmtT(src.start)} clip to Files`); };
+$('golive').onclick = () => goLive(src.cam || (cam === 'all' ? cameras[0].id : cam));
+function toast(m) { $('toast').textContent = m; $('toast').hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => ($('toast').hidden = true), 1800); }
+
+// ---- Filters
+function chips() {
+  const active = new Set(cameras.filter((c) => clips(c.id, now() - 1000).some((x) => x.ongoing)).map((c) => c.id));
+  $('camchips').innerHTML = [['all', 'All cameras'], ...cameras.map((c) => [c.id, c.name])].map(([id, n]) =>
+    `<button class="chip" data-cam="${id}" aria-pressed="${cam === id}">${active.has(id) ? '<span class="dot" aria-label="recording now"></span>' : ''}${n}</button>`).join('');
+  $('kindchips').innerHTML = KINDS.map(([id, n]) => `<button class="chip" data-kind="${id}" aria-pressed="${kind === id}">${n}</button>`).join('') +
+    `<label class="chip date" aria-label="Jump to a date">📅 Date<input id="date" type="date" max="${new Date(now()).toISOString().slice(0, 10)}"></label>`;
+  $('date').onchange = (e) => { if (!e.target.value) return; const [y, m, d] = e.target.value.split('-').map(Number); log('date', { date: e.target.value }); jumpTo(new Date(y, m - 1, d).getTime()); };
+}
+$('camchips').onclick = (e) => { const b = e.target.closest('[data-cam]'); if (!b) return; cam = b.dataset.cam; log('filter', { cam }); chips(); build(); };
+$('kindchips').onclick = (e) => { const b = e.target.closest('[data-kind]'); if (!b) return; kind = b.dataset.kind; log('filter', { kind }); chips(); build(); };
+
+// ---- Feed
+function events(d0) {
+  const d1 = addDays(d0, 1), out = [];
+  for (const c of cameras) {
+    if (cam !== 'all' && cam !== c.id) continue;
+    let cur = null;
+    for (const x of clips(c.id, d0, d1)) {
+      if (x.start < d0 || !match(x)) continue;
+      if (cur && x.start - cur.end < 2 * MIN) { cur.clips.push(x); cur.end = Math.max(cur.end, x.end); }
+      else { cur = { cam: c.id, start: x.start, end: x.end, clips: [x] }; out.push(cur); }
+    }
+  }
+  return out.sort((a, b) => b.start - a.start);
+}
+let shownDays = 0, evById = {};
+function evRow(ev) {
+  const id = ev.clips[0].id; evById[id] = ev;
+  const tags = [...new Set(ev.clips.flatMap((c) => c.tags))].map((t) => KLABEL[t]).join(', ') || 'Motion';
+  const ongoing = ev.clips.some((c) => c.ongoing);
+  const n = ev.clips.length, span = ev.end - ev.start;
+  const spans = dayStart(ev.end) !== dayStart(ev.start);
+  const right = ongoing ? 'Still going' : n > 1 ? `${n} clips · ${dur(span)}` : spans ? `until ${dayName(dayStart(ev.end)).split(' · ').pop()} ${fmtT(ev.end)}` : dur(span);
+  return `<button class="ev" data-ev="${id}" data-hour="${new Date(ev.start).getHours()}">
+    <span class="sw" style="background:${frame(ev.clips[0]).color}">${n > 1 ? `<em>${n}</em>` : ''}</span>
+    <span class="t${ongoing ? ' now' : ''}">${ongoing ? 'Now' : fmtT(ev.start)}</span>
+    <span class="m"><b>${cam === 'all' ? camName(ev.cam) : tags}</b><span>${cam === 'all' ? tags + ' · ' : ''}${right}</span></span></button>`;
+}
+function daySection(d0) {
+  const evs = events(d0);
+  const counts = Array(24).fill(0); evs.forEach((e) => counts[new Date(e.start).getHours()]++);
+  const max = Math.max(1, ...counts);
+  const sec = document.createElement('section');
+  sec.dataset.day = d0;
+  sec.innerHTML = `<div class="sec-h"><h2><span>${dayName(d0)}</span><span>${evs.length || 'No'} event${evs.length === 1 ? '' : 's'}</span></h2>
+    ${evs.length ? `<div class="hours" aria-label="Activity by hour">${counts.map((n, h) => `<button data-h="${h}" aria-label="${h}:00, ${n} events"><i style="opacity:${n ? 0.25 + 0.75 * n / max : 0}"></i></button>`).join('')}</div>
+    <div class="hourlbl"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>` : ''}</div>
+    ${evs.length ? `<div class="list">${evs.map(evRow).join('')}</div>` : ''}`;
+  return sec;
+}
+function build(keepScroll) {
+  const feed = $('feed'), top = feed.scrollTop;
+  evById = {};
+  feed.innerHTML = `<section><div class="sec-h"><h2><span>Live now</span></h2></div><div id="tiles"></div></section><div id="days"></div><div id="more">Loading earlier days…</div>`;
+  const n = shownDays || 2; shownDays = 0;
+  for (let i = 0; i < n; i++) moreDay();
+  tiles(); markOn();
+  feed.scrollTop = keepScroll ? top : 0;
+}
+function moreDay() {
+  if (shownDays > DAYS) { $('more').textContent = 'That’s the oldest recording.'; return; }
+  $('days').appendChild(daySection(addDays(now(), -shownDays))); shownDays++;
+}
+function jumpTo(d0) {
+  const want = Math.round((dayStart(now()) - d0) / DAY);
+  while (shownDays <= want && shownDays <= DAYS) moreDay();
+  const s = $('days').querySelector(`[data-day="${d0}"]`); if (s) $('feed').scrollTop = s.offsetTop - $('feed').offsetTop;
+}
+function tiles() {
+  const list = cam === 'all' ? cameras : cameras.filter((c) => c.id === cam);
+  $('tiles').style.gridTemplateColumns = list.length > 1 ? '1fr 1fr' : '1fr';
+  $('tiles').innerHTML = list.map((c) => { const f = frame({ live: c.id }); return `<button class="tile${src.live === c.id ? ' on' : ''}" data-live="${c.id}" style="background:${f.color}" aria-label="Watch ${c.name} live"><b><i></i>${c.name}</b><span>${f.caption}</span></button>`; }).join('');
+}
+function markOn() {
+  document.querySelectorAll('.ev.on, .tile.on').forEach((e) => e.classList.remove('on'));
+  if (src.live) document.querySelector(`[data-live="${src.live}"]`)?.classList.add('on');
+  else { const k = Object.keys(evById).find((k) => evById[k].clips.some((c) => c.id === src.id)); if (k) document.querySelector(`[data-ev="${k}"]`)?.classList.add('on'); }
+}
+$('feed').onclick = (e) => {
+  const t = e.target.closest('[data-live]'); if (t) return goLive(t.dataset.live);
+  const ev = e.target.closest('[data-ev]'); if (ev) return playEvent(evById[ev.dataset.ev]);
+  const h = e.target.closest('[data-h]');
+  if (h) { const row = h.closest('section').querySelector(`.ev[data-hour="${h.dataset.h}"]`); if (row) { log('hour', { h: h.dataset.h }); row.scrollIntoView({ block: 'center' }); row.animate([{ background: 'var(--accent-soft)' }, { background: 'transparent' }], 1200); } }
+};
+// Sentinel sits after #more; build() replaces innerHTML, so re-attach it there.
+const reattach = () => { const s = document.createElement('div'); $('feed').appendChild(s); io.observe(s); };
+const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) moreDay(); }, { root: $('feed'), rootMargin: '400px' });
+const _build = build; build = (k) => { _build(k); reattach(); };
+setInterval(tiles, 3000);
+setInterval(() => { chips(); build(true); }, 30000);
+chips(); build(); render();
+</script>
