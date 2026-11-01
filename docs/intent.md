@@ -20,7 +20,9 @@ slower, harder, or less certain is moving backward.
    one event in hours of time.
 3. **"Who rang the doorbell this morning?"** One camera, a rough window, and you
    want to see a face.
-4. **Stretch: "When did <person> leave?"** You're looking for one particular
+4. **"What's going on in <place> right now?"** You know where, but nothing has
+   necessarily happened there. Answering it shouldn't need any other screen.
+5. **Stretch: "When did <person> leave?"** You're looking for one particular
    person walking out of the gate or front door, among everyone else who came
    and went.
 
