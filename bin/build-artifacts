@@ -10,7 +10,12 @@ src, dst = sys.argv[1:]
 html = open(src).read()
 tag = '<script src="harness.js"></script>'
 assert tag in html, f'{src}: no harness tag'
-open(dst, 'w').write(html.replace(tag, '<script>\n' + open('proto/harness.js').read() + '</script>'))
+import re
+# The artifact host supplies the document shell, and reads the title only from the first 8KB.
+title = re.search(r'<title>.*?</title>', html).group(0)
+html = re.sub(r'<!doctype html>|</?html[^>]*>|</?head>|</?body>|<meta [^>]*>|<title>.*?</title>', '', html, flags=re.I)
+html = html.replace(tag, '<script>\n' + open('proto/harness.js').read() + '</script>')
+open(dst, 'w').write(title + '\n' + html.strip() + '\n')
 PY
   echo "built dist/$(basename "$f")"
 done
