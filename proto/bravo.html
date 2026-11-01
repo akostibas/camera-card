@@ -130,7 +130,7 @@ function render() {
   if (src.live) { $('ptitle').textContent = camName(src.live); $('psub').textContent = 'Live now · ' + fmtT(now()); return; }
   const d = (src.end - src.start) / 1000;
   $('ptitle').textContent = camName(src.cam);
-  $('psub').textContent = `${dayName(dayStart(src.start)).replace(' · ', ', ')} ${new Date(src.start + sec * 1000).toLocaleTimeString('en-US')}` + (queue.length > 1 ? ` · clip ${qi + 1} of ${queue.length}` : '');
+  $('psub').textContent = `${dayName(dayStart(src.start + sec * 1000)).replace(' · ', ', ')} ${new Date(src.start + sec * 1000).toLocaleTimeString('en-US')}` + (queue.length > 1 ? ` · clip ${qi + 1} of ${queue.length}` : '');
   $('prev').disabled = qi === 0; $('next').disabled = qi >= queue.length - 1;
   $('seek').value = Math.round((sec / d) * 1000); $('tcur').textContent = mmss(sec); $('tdur').textContent = mmss(d);
   $('pp').textContent = playing ? '❚❚' : '▶';
@@ -163,8 +163,8 @@ function chips() {
   $('camchips').innerHTML = [['all', 'All cameras'], ...cameras.map((c) => [c.id, c.name])].map(([id, n]) =>
     `<button class="chip" data-cam="${id}" aria-pressed="${cam === id}">${active.has(id) ? '<span class="dot" aria-label="recording now"></span>' : ''}${n}</button>`).join('');
   $('kindchips').innerHTML = KINDS.map(([id, n]) => `<button class="chip" data-kind="${id}" aria-pressed="${kind === id}">${n}</button>`).join('') +
-    `<label class="chip date" aria-label="Jump to a date">📅 Date<input id="date" type="date" max="${new Date(now()).toISOString().slice(0, 10)}"></label>`;
-  $('date').onchange = (e) => { if (!e.target.value) return; const [y, m, d] = e.target.value.split('-').map(Number); log('date', { date: e.target.value }); jumpTo(new Date(y, m - 1, d).getTime()); };
+    `<button class="chip" id="date" aria-label="Jump to a date">📅 Date</button>`;
+  $('date').onclick = () => PROTO.dayPicker((t) => { log('date', { date: new Date(t).toDateString() }); jumpTo(t); });
 }
 $('camchips').onclick = (e) => { const b = e.target.closest('[data-cam]'); if (!b) return; cam = b.dataset.cam; log('filter', { cam }); chips(); build(); };
 $('kindchips').onclick = (e) => { const b = e.target.closest('[data-kind]'); if (!b) return; kind = b.dataset.kind; log('filter', { kind }); chips(); build(); };
@@ -244,7 +244,7 @@ $('feed').onclick = (e) => {
 };
 // Sentinel sits after #more; build() replaces innerHTML, so re-attach it there.
 const reattach = () => { const s = document.createElement('div'); $('feed').appendChild(s); io.observe(s); };
-const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) moreDay(); }, { root: $('feed'), rootMargin: '400px' });
+const io = new IntersectionObserver((es) => { if (!es.some((e) => e.isIntersecting)) return; const f = $('feed'), s = es[0].target; let n = 0; while (shownDays <= DAYS && n++ < 10 && s.getBoundingClientRect().top < f.getBoundingClientRect().bottom + 400) moreDay(); }, { root: $('feed'), rootMargin: '400px' });
 const _build = build; build = (k) => { _build(k); reattach(); };
 setInterval(tiles, 3000);
 setInterval(() => { chips(); build(true); }, 30000);

@@ -418,10 +418,8 @@ $('#filters').addEventListener('click', (e) => {
 const dateEl = $('#date'), bdate = $('#bdate');
 bdate.insertAdjacentHTML('afterbegin', svg('cal'));
 const iso = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-bdate.onclick = () => {
-  dateEl.min = iso(dayStart(DAYS)); dateEl.max = iso(dayStart(0));
-  try { dateEl.showPicker(); } catch { dateEl.focus(); }
-};
+// Test harness: native pickers don't show in testers' screenshots, so use the shared in-page one.
+bdate.onclick = () => PROTO.dayPicker((t) => { dateEl.value = iso(t); dateEl.dispatchEvent(new Event('change')); });
 dateEl.addEventListener('change', () => {
   if (!dateEl.value) return;
   const [y, m, d] = dateEl.value.split('-').map(Number);

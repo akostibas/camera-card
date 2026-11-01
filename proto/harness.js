@@ -149,7 +149,7 @@
   P_('crawl', u5, 40, 'animal', [[0, 'A rat runs along a floor joist'], [10, `The rat stops and chews on ${CHEWED}`], [28, 'The rat pulls a strip loose and runs off']]);
   P_('crawl', u5 + Math.floor(between(5, 8)) * DAY + between(-2, 2) * H, 10, 'animal', 'A rat scurries along the beam and disappears');
   P_('crawl', u5 - Math.floor(between(4, 9)) * DAY + 14 * H, 300, 'person', [[0, 'Person with a flashlight crawls in'], [60, 'They check the water heater and leave']]);
-  key.tasks.push({ uc: 5, task: `Rats chewed through ${CHEWED} in the crawl space. When did they do that?`, answer: hm(u5) });
+  key.tasks.push({ uc: 5, task: `Rats chewed through ${CHEWED} in the crawl space. When did they do that? You only just noticed, so it could have been a month or more ago.`, answer: hm(u5) });
 
   // 6. When did <person> leave?
   const WHO = [['Jordan', 'a red jacket and a grey backpack', 'a red jacket and carrying a white tote bag'],
@@ -227,6 +227,25 @@
     return { color: `hsl(${c.hue} 42% 38%)`, caption: [...c.scenes].reverse().find((s) => s[0] <= sec)[1] };
   };
 
-  window.PROTO = { cameras: CAMERAS, now, clips, frame, log, task: q.get('task') };
+  // Shared in-page calendar: native date pickers don't show up in testers' screenshots.
+  const dayPicker = (onPick) => {
+    const host = document.getElementById('phone') || document.getElementById('app');
+    const today = new Date(now()); today.setHours(0, 0, 0, 0);
+    const first = new Date(today); first.setDate(first.getDate() - 45);
+    let html = '<div style="background:#fff;color:#111;border-radius:12px;padding:12px;width:300px;font:14px system-ui"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b>Pick a day</b><button data-x aria-label="Close" style="border:0;background:none;font-size:18px;cursor:pointer">✕</button></div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center">';
+    for (const d of 'SMTWTFS') html += `<span style="color:#888;font-size:11px">${d}</span>`;
+    for (let i = 0; i < first.getDay(); i++) html += '<span></span>';
+    for (const d = new Date(first); d <= today; d.setDate(d.getDate() + 1)) {
+      const lbl = d.getDate() === 1 || +d === +first ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : d.getDate();
+      html += `<button data-d="${+d}" style="border:0;border-radius:6px;background:${+d === +today ? '#cfe0ff' : '#eef1f5'};padding:7px 0;font-size:12px;cursor:pointer">${lbl}</button>`;
+    }
+    const box = document.createElement('div');
+    box.style.cssText = 'position:absolute;inset:0;z-index:50;background:#0008;display:grid;place-items:center';
+    box.innerHTML = html + '</div></div>';
+    box.onclick = (e) => { const b = e.target.closest('[data-d]'); if (b) { box.remove(); onPick(+b.dataset.d); } else if (e.target.closest('[data-x]') || e.target === box) box.remove(); };
+    host.style.position = 'relative'; host.appendChild(box);
+  };
+
+  window.PROTO = { cameras: CAMERAS, now, clips, frame, log, dayPicker, task: q.get('task') };
   if (typeof document === 'undefined') window.PROTO.answerKey = key; // only for bin/answers
 })();

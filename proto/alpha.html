@@ -42,7 +42,7 @@ canvas { display: block; }
     <div id="toast" hidden></div>
   </div>
   <div id="bar">
-    <label id="datewrap" aria-label="Pick a date">📅<input id="date" type="date"></label>
+    <button id="datewrap" aria-label="Pick a date">📅</button>
     <span class="day" id="day"></span>
     <button id="zout" aria-label="Zoom out">−</button><button id="zin" aria-label="Zoom in">+</button>
   </div>
@@ -68,7 +68,7 @@ function render() {
   $('cap').textContent = f.caption;
   $('badge').hidden = !src.live;
   const camName = cameras.find((c) => c.id === (src.live || src.cam)).name;
-  $('vlabel').textContent = src.live ? camName : `${camName} · ${fmtD(src.start)} ${new Date(src.start + sec * 1000).toLocaleTimeString('en-US')}`;
+  $('vlabel').textContent = src.live ? camName : `${camName} · ${fmtD(src.start + sec * 1000)} ${new Date(src.start + sec * 1000).toLocaleTimeString('en-US')}`;
   if (!src.live) {
     const dur = (src.end - src.start) / 1000;
     $('seek').value = Math.round((sec / dur) * 1000);
@@ -190,8 +190,7 @@ track.addEventListener('wheel', (e) => { e.preventDefault(); const r = track.get
 function zoom(f, at = 0.5) { const t = t0 + at * span; span = Math.min(14 * DAY, Math.max(5 * MIN, span * f)); t0 = t - at * span; log('zoom', { span }); draw(); }
 $('zin').onclick = () => zoom(0.5);
 $('zout').onclick = () => zoom(2);
-$('date').max = new Date(now()).toISOString().slice(0, 10);
-$('date').onchange = (e) => { if (!e.target.value) return; const [y, m, d] = e.target.value.split('-').map(Number); t0 = new Date(y, m - 1, d).getTime(); span = DAY; log('date', { date: e.target.value }); draw(); };
+$('datewrap').onclick = () => PROTO.dayPicker((t) => { t0 = t; span = DAY; log('date', { date: new Date(t).toDateString() }); draw(); });
 addEventListener('resize', size);
 setInterval(draw, 5000);
 size(); render();
