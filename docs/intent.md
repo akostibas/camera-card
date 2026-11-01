@@ -67,7 +67,15 @@ These don't count as moving forward, and they shouldn't cost anything above:
 
 ## Fixed constraints
 
+These hold today. Most can be lifted with engineering work, usually in the
+integration, so a use case blocked by one is a reason to weigh that work, not
+a dead end.
+
 - Recordings reach the card only through Home Assistant, via our patched
   Reolink integration in family-infra. Fetching, caching, and detection tags
   live there.
+- Each recording comes with only its camera, its start and end times, and the
+  NVR's detection tags: person, vehicle, animal, doorbell press, or plain
+  motion. About 1 in 5 recordings has no tag at all. Nothing says what
+  happened in a recording or who was there.
 - family-infra deploys the card from a pinned release.
