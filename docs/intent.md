@@ -78,4 +78,7 @@ a dead end.
   NVR's detection tags: person, vehicle, animal, doorbell press, or plain
   motion. About 1 in 5 recordings has no tag at all. Nothing says what
   happened in a recording or who was there.
+- A still picture from any moment of a recording can be fetched from the NVR
+  in a fraction of a second (640×480), but nothing picks the moment that
+  shows the action.
 - family-infra deploys the card from a pinned release.
