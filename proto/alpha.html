@@ -1,0 +1,197 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cameras A</title>
+<style>
+/* Today's card, plus planned fixes: player on top, one timeline row per camera below. Single dark HA look. */
+:root {
+  --ground: #08090b; --bg: #111317; --row: #171a1f; --line: #262a31; --text: #e4e6ea; --dim: #8a919b;
+  --now: #e5483d; --person: #4d8dff; --vehicle: #f0a43a; --animal: #47b36b; --motion: #7c8590;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; background: var(--ground); color: var(--text); font: 14px/1.35 var(--font); color-scheme: dark; }
+#phone { width: min(390px, 100vw); height: min(844px, 100%); margin: 0 auto; background: var(--bg); display: flex; flex-direction: column; overflow: hidden; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+#video { position: relative; aspect-ratio: 16 / 9; flex: none; display: grid; place-items: center; overflow: hidden; user-select: none; }
+#cap { max-width: 82%; text-align: center; font-size: 17px; font-weight: 500; text-shadow: 0 1px 3px #0008; text-wrap: balance; }
+#vlabel { position: absolute; left: 10px; bottom: 8px; font-size: 12px; color: #fffc; text-shadow: 0 1px 2px #000a; font-variant-numeric: tabular-nums; }
+#badge { position: absolute; right: 10px; top: 10px; background: var(--now); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .06em; padding: 2px 7px; border-radius: 4px; }
+#dl { position: absolute; left: 6px; top: 50px; width: 40px; height: 40px; border-radius: 50%; background: #0007; font-size: 20px; display: grid; place-items: center; }
+#ctrl { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: linear-gradient(transparent, #000b); }
+#ctrl input { flex: 1; accent-color: #fff; }
+#ctrl span { font-size: 12px; font-variant-numeric: tabular-nums; }
+#toast { position: absolute; left: 50%; top: 40%; transform: translateX(-50%); background: #000d; padding: 8px 14px; border-radius: 8px; font-size: 13px; }
+#bar { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+#bar .day { flex: 1; font-weight: 600; }
+#bar button, #datewrap { height: 34px; min-width: 38px; border-radius: 8px; background: var(--row); display: grid; place-items: center; font-size: 16px; position: relative; }
+#datewrap input { position: absolute; inset: 0; opacity: 0; width: 100%; }
+#tl { flex: 1; display: grid; grid-template-columns: 78px 1fr; grid-template-rows: 22px auto; align-content: start; overflow: hidden; }
+#labels { grid-row: 2; }
+#labels div { height: 44px; display: flex; align-items: center; padding-left: 10px; font-size: 13px; color: var(--dim); border-bottom: 1px solid var(--line); }
+#axisc, #trackwrap { grid-column: 2; position: relative; }
+#trackwrap { touch-action: none; }
+canvas { display: block; }
+.live { position: absolute; height: 26px; padding: 0 8px; border-radius: 13px; background: var(--now); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .04em; display: flex; align-items: center; gap: 3px; }
+</style>
+<div id="phone">
+  <div id="video">
+    <div id="cap"></div><div id="vlabel"></div><div id="badge">LIVE</div>
+    <button id="dl" aria-label="Download">⤓</button>
+    <div id="ctrl" hidden><button id="pp" aria-label="Play or pause">❚❚</button><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek"><span id="tm"></span></div>
+    <div id="toast" hidden></div>
+  </div>
+  <div id="bar">
+    <button id="datewrap" aria-label="Pick a date">📅</button>
+    <span class="day" id="day"></span>
+    <button id="zout" aria-label="Zoom out">−</button><button id="zin" aria-label="Zoom in">+</button>
+  </div>
+  <div id="tl"><div id="labels"></div><div id="axisc"><canvas id="axis"></canvas></div><div id="trackwrap"><canvas id="track"></canvas></div></div>
+</div>
+<script src="harness.js"></script>
+<script>
+const { cameras, now, clips, frame, log } = PROTO;
+const $ = (id) => document.getElementById(id);
+const ROW = 44, MIN = 6e4, H = 36e5, DAY = 864e5;
+const TAGCOL = { person: '--person', vehicle: '--vehicle', animal: '--animal' };
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmtT = (t) => new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+const fmtD = (t) => new Date(t).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+// ---- Player
+let src = { live: 'crawl' }, sec = 0, playing = true, ctrlTimer;
+function play(c) { src = c; sec = 0; playing = true; log('play', { clip: c.id }); render(); draw(); }
+function goLive(cam) { src = { live: cam }; log('live', { cam }); render(); draw(); }
+function render() {
+  const f = frame(src, sec);
+  $('video').style.background = f.color;
+  $('cap').textContent = f.caption;
+  $('badge').hidden = !src.live;
+  const camName = cameras.find((c) => c.id === (src.live || src.cam)).name;
+  $('vlabel').textContent = src.live ? camName : `${camName} · ${fmtD(src.start + sec * 1000)} ${new Date(src.start + sec * 1000).toLocaleTimeString('en-US')}`;
+  if (!src.live) {
+    const dur = (src.end - src.start) / 1000;
+    $('seek').value = Math.round((sec / dur) * 1000);
+    $('tm').textContent = `${mmss(sec)} / ${mmss(dur)}`;
+    $('pp').textContent = playing ? '❚❚' : '▶';
+  }
+}
+const mmss = (s) => { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s % 60).padStart(2, '0'); };
+let last = Date.now();
+setInterval(() => {
+  const n = Date.now(), dt = (n - last) / 1000; last = n;
+  if (!src.live && playing) { sec += dt; const dur = (src.end - src.start) / 1000; if (sec >= dur) { sec = dur; playing = false; } }
+  render();
+}, 250);
+$('video').addEventListener('pointerdown', (e) => {
+  if (src.live || e.target.closest('#dl,#ctrl')) return;
+  $('ctrl').hidden = false; clearTimeout(ctrlTimer); ctrlTimer = setTimeout(() => ($('ctrl').hidden = true), 4000);
+});
+$('pp').onclick = () => { playing = !playing; render(); };
+$('seek').oninput = (e) => { sec = (e.target.value / 1000) * (src.end - src.start) / 1000; render(); };
+$('dl').onclick = () => {
+  if (src.live) return toast('Nothing to download in live view');
+  log('download', { clip: src.id }); toast('Downloaded');
+};
+function toast(m) { $('toast').textContent = m; $('toast').hidden = false; setTimeout(() => ($('toast').hidden = true), 1600); }
+
+// ---- Timeline
+let t0 = now() - 45 * MIN, span = H;
+$('labels').innerHTML = cameras.map((c) => `<div>${c.name}</div>`).join('');
+const track = $('track'), axis = $('axis'), wrap = $('trackwrap');
+let W = 0;
+const x = (t) => ((t - t0) / span) * W;
+const STEPS = [MIN, 5 * MIN, 10 * MIN, 15 * MIN, 30 * MIN, H, 2 * H, 3 * H, 6 * H, 12 * H, DAY, 2 * DAY, 7 * DAY];
+function size() {
+  W = wrap.clientWidth; const dpr = devicePixelRatio || 1;
+  for (const [c, h] of [[track, ROW * cameras.length], [axis, 22]]) { c.width = W * dpr; c.height = h * dpr; c.style.width = W + 'px'; c.style.height = h + 'px'; c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0); }
+  draw();
+}
+function clusters(cam) {
+  const out = [];
+  for (const c of clips(cam, t0, t0 + span)) {
+    let x1 = x(c.start), x2 = Math.max(x(c.end), x1 + 10);
+    const lastC = out[out.length - 1];
+    if (lastC && x1 <= lastC.x2 + 2) { lastC.x2 = Math.max(lastC.x2, x2); lastC.items.push(c); }
+    else out.push({ x1, x2, items: [c] });
+  }
+  return out;
+}
+const rank = (c) => c.tags.includes('person') ? 'person' : c.tags.includes('vehicle') ? 'vehicle' : c.tags.includes('animal') ? 'animal' : 'motion';
+function draw() {
+  if (!W) return;
+  const g = track.getContext('2d'), a = axis.getContext('2d'), n = now();
+  g.clearRect(0, 0, W, track.height); a.clearRect(0, 0, W, 22);
+  const step = STEPS.find((s) => (s / span) * W >= 64) || STEPS.at(-1);
+  a.fillStyle = css('--dim'); a.font = '11px ' + css('--font');
+  g.strokeStyle = css('--line');
+  const first = new Date(t0); first.setHours(0, 0, 0, 0);
+  for (let t = first.getTime(); t < t0 + span; t += step) {
+    if (t < t0) continue;
+    const px = Math.round(x(t)) + 0.5;
+    g.beginPath(); g.moveTo(px, 0); g.lineTo(px, track.height); g.stroke();
+    a.fillText(step >= DAY || new Date(t).getHours() === 0 && new Date(t).getMinutes() === 0 ? fmtD(t) : fmtT(t).replace(' ', ' '), px + 3, 15);
+  }
+  cameras.forEach((cam, i) => {
+    const y = i * ROW;
+    g.fillStyle = css('--line'); g.fillRect(0, y + ROW - 1, W, 1);
+    for (const cl of clusters(cam.id)) {
+      const order = ['person', 'vehicle', 'animal', 'motion'];
+      const top = order.find((k) => cl.items.some((c) => rank(c) === k));
+      g.fillStyle = css(TAGCOL[top] || '--motion');
+      g.beginPath(); g.roundRect(cl.x1, y + 12, cl.x2 - cl.x1, ROW - 24, 4); g.fill();
+      if (cl.items.some((c) => c.id === src.id)) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke(); g.lineWidth = 1; g.strokeStyle = css('--line'); }
+      if (cl.items.length > 1) {
+        const label = cl.items.length > 99 ? '99+' : String(cl.items.length);
+        g.font = '600 10px ' + css('--font');
+        const bw = Math.max(16, g.measureText(label).width + 8), bx = Math.min(cl.x2 - bw / 2, W - bw / 2 - 1);
+        g.fillStyle = '#fff'; g.beginPath(); g.roundRect(bx - bw / 2, y + 3, bw, 15, 7.5); g.fill();
+        g.fillStyle = '#111'; g.textAlign = 'center'; g.fillText(label, bx, y + 14); g.textAlign = 'left';
+      }
+    }
+  });
+  if (!src.live) { const px = x(src.start + sec * 1000); g.fillStyle = '#fff'; g.fillRect(px - 1, cameras.findIndex((c) => c.id === src.cam) * ROW + 6, 2, ROW - 12); }
+  const nx = x(n);
+  if (nx >= 0 && nx <= W) { g.fillStyle = a.fillStyle = css('--now'); g.fillRect(nx - 1, 0, 2, track.height); a.fillRect(nx - 1, 0, 2, 22); }
+  // Live buttons sit just past the Now line, or pinned to the right edge when Now is off screen.
+  wrap.querySelectorAll('.live').forEach((b) => b.remove());
+  if (nx >= 0) cameras.forEach((cam, i) => {
+    const b = document.createElement('button');
+    b.className = 'live'; b.textContent = '▶ LIVE'; b.dataset.log = 'live ' + cam.name;
+    b.style.top = i * ROW + 9 + 'px';
+    b.style.left = Math.min(nx + 4, W - 60) + 'px';
+    if (src.live === cam.id) b.style.outline = '2px solid #fff';
+    b.onclick = () => goLive(cam.id);
+    wrap.appendChild(b);
+  });
+  $('day').textContent = fmtD(t0 + span / 2);
+}
+// Drag pans; a tap plays the nearest clip in that row within view (past Now goes live).
+let drag = null;
+track.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, t0, moved: false }; track.setPointerCapture(e.pointerId); });
+track.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x;
+  if (Math.abs(dx) > 6) drag.moved = true;
+  if (drag.moved) { t0 = drag.t0 - (dx / W) * span; draw(); }
+});
+track.addEventListener('pointerup', (e) => {
+  if (!drag) return; const moved = drag.moved; drag = null;
+  if (moved) return log('pan', { t0 });
+  const r = track.getBoundingClientRect(), cam = cameras[Math.floor((e.clientY - r.top) / ROW)];
+  if (!cam) return;
+  const t = t0 + ((e.clientX - r.left) / W) * span;
+  if (t > now()) return goLive(cam.id);
+  let best = null, bd = Infinity;
+  for (const c of clips(cam.id, t0, t0 + span)) { const d = t < c.start ? c.start - t : t > c.end ? t - c.end : 0; if (d < bd) { bd = d; best = c; } }
+  if (best) play(best);
+});
+track.addEventListener('wheel', (e) => { e.preventDefault(); const r = track.getBoundingClientRect(); zoom(e.deltaY > 0 ? 1.25 : 0.8, (e.clientX - r.left) / W); }, { passive: false });
+function zoom(f, at = 0.5) { const t = t0 + at * span; span = Math.min(14 * DAY, Math.max(5 * MIN, span * f)); t0 = t - at * span; log('zoom', { span }); draw(); }
+$('zin').onclick = () => zoom(0.5);
+$('zout').onclick = () => zoom(2);
+$('datewrap').onclick = () => PROTO.dayPicker((t) => { t0 = t; span = DAY; log('date', { date: new Date(t).toDateString() }); draw(); });
+addEventListener('resize', size);
+setInterval(draw, 5000);
+size(); render();
+</script>

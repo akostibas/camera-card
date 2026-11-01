@@ -39,11 +39,15 @@ slower, harder, or less certain is moving backward.
   right now is no harder than watching what it saw.
 - **Narrowing is easier.** It's easier to focus on one kind of event, such as
   people, or on one stretch of time, including days past.
+- **Knowing when to stop.** You can tell when you've seen everything that
+  matches, including how far back recordings go.
 - **Keeping is easier.** It's easier to save a recording off the device.
 - **More at home on a phone.** It feels more like the phone's own apps: faster
   under your finger, video that behaves the way video does elsewhere on the
   phone, and nothing covering the phone's own controls.
-- **Calmer.** Less jumping, resizing, flashing, and fewer surprises.
+- **Calmer.** Less jumping, resizing, flashing, and fewer surprises. When
+  feeling like the phone and staying calm pull apart, calm wins: nothing moves
+  on its own under your finger.
 - **Less to it.** Less code, fewer settings, fewer moving parts, as long as
   nothing above gets worse.
 
@@ -56,6 +60,8 @@ A change that breaks one of these is a regression, whatever else it improves:
 - Another day appears within 2 seconds of asking for it.
 - A recording starts within 5 seconds of choosing it.
 - New activity shows up within 2 minutes.
+- Use cases 1 to 4 each take under 30 seconds to answer, and use case 5 under
+  2 minutes.
 
 ## Not progress
 
@@ -67,7 +73,18 @@ These don't count as moving forward, and they shouldn't cost anything above:
 
 ## Fixed constraints
 
+These hold today. Most can be lifted with engineering work, usually in the
+integration, so a use case blocked by one is a reason to weigh that work, not
+a dead end.
+
 - Recordings reach the card only through Home Assistant, via our patched
   Reolink integration in family-infra. Fetching, caching, and detection tags
   live there.
+- Each recording comes with only its camera, its start and end times, and the
+  NVR's detection tags: person, vehicle, animal, doorbell press, or plain
+  motion. About 1 in 5 recordings has no tag at all. Nothing says what
+  happened in a recording or who was there.
+- A still picture from any moment of a recording can be fetched from the NVR
+  in a fraction of a second (640×480), but nothing picks the moment that
+  shows the action.
 - family-infra deploys the card from a pinned release.
