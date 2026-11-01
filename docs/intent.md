@@ -39,11 +39,15 @@ slower, harder, or less certain is moving backward.
   right now is no harder than watching what it saw.
 - **Narrowing is easier.** It's easier to focus on one kind of event, such as
   people, or on one stretch of time, including days past.
+- **Knowing when to stop.** You can tell when you've seen everything that
+  matches, including how far back recordings go.
 - **Keeping is easier.** It's easier to save a recording off the device.
 - **More at home on a phone.** It feels more like the phone's own apps: faster
   under your finger, video that behaves the way video does elsewhere on the
   phone, and nothing covering the phone's own controls.
-- **Calmer.** Less jumping, resizing, flashing, and fewer surprises.
+- **Calmer.** Less jumping, resizing, flashing, and fewer surprises. When
+  feeling like the phone and staying calm pull apart, calm wins: nothing moves
+  on its own under your finger.
 - **Less to it.** Less code, fewer settings, fewer moving parts, as long as
   nothing above gets worse.
 
@@ -56,6 +60,8 @@ A change that breaks one of these is a regression, whatever else it improves:
 - Another day appears within 2 seconds of asking for it.
 - A recording starts within 5 seconds of choosing it.
 - New activity shows up within 2 minutes.
+- Use cases 1 to 4 each take under 30 seconds to answer, and use case 5 under
+  2 minutes.
 
 ## Not progress
 
