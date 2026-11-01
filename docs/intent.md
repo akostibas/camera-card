@@ -59,7 +59,6 @@ These don't count as moving forward, and they shouldn't cost anything above:
 - Serving other households, camera brands, or setups.
 - Controlling the cameras: moving them, talking through them, or answering the
   doorbell.
-- Doing the job of the always-on live tiles elsewhere on the dashboard.
 
 ## Fixed constraints
 
