@@ -8,6 +8,22 @@ Assistant app), sometimes on a desktop. The question is "what happened around
 the house, and what's happening now?" It replaces our fork of Advanced Camera
 Card (family-infra #299).
 
+## Use cases
+
+Score a change by how it affects these. A change that makes any of them
+slower, harder, or less certain is moving backward.
+
+1. **"I heard a noise outside. What was it?"** It happened seconds or minutes
+   ago, and it may still be going on. You don't know which camera saw it.
+2. **"Something knocked the trash cans over. What happened?"** It happened
+   sometime overnight, on a camera you can probably guess. You're looking for
+   one event in hours of time.
+3. **"Who rang the doorbell this morning?"** One camera, a rough window, and you
+   want to see a face.
+4. **Stretch: "When did <person> leave?"** You're looking for one particular
+   person walking out of the gate or front door, among everyone else who came
+   and went.
+
 ## Better means
 
 - **Less time to understand.** It takes less time to know when and where there
