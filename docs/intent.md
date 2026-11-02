@@ -80,8 +80,9 @@ a dead end.
 - Recordings reach the card only through Home Assistant, via our patched
   Reolink integration in family-infra. Fetching, caching, and detection tags
   live there.
-- Recordings arrive as files of at most 5 minutes; longer activity is several
-  back-to-back files.
+- Recordings arrive in pieces of at most 5 minutes, because the integration
+  asks the NVR for them in 5-minute slices; longer activity is several
+  back-to-back pieces.
 - Each recording comes with only its camera, its start and end times, and the
   NVR's detection tags: person, vehicle, animal, doorbell press, or plain
   motion. About 1 in 5 recordings has no tag at all. Nothing says what
