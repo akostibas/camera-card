@@ -179,7 +179,7 @@ function mount(host, config) {
   root.innerHTML = `<style>${STYLE}</style>${HTML}`;
   const $ = (s) => root.querySelector(s);
   const api = (path) => host.hass.callApi('GET', path);
-  const S = { cams: [], recs: new Map(), loaded: -1, oldest: 0, untagged: false, cam: 'all', tag: '', view: { mode: 'grid' }, speed: 1, all: [], next: 0, quiet: null, open: new Set(), seeking: false, playSeq: 0 };
+  const S = { cams: [], recs: new Map(), loaded: -1, oldest: 0, untagged: false, cam: 'all', tag: '', view: { mode: 'grid' }, speed: 1, all: [], next: 0, quiet: null, open: new Set(), seeking: false, playSeq: 0, gen: 0 };
   const cam = {};
   const camDot = (ch) => PALETTE[S.cams.findIndex((c) => c.ch === ch) % PALETTE.length];
 
@@ -299,15 +299,23 @@ function mount(host, config) {
     if (q.untg) { const b = document.createElement('button'); b.className = 'untg'; b.dataset.untagged = ''; b.dataset.day = q.from; b.textContent = `+ ${q.untg} with no tag`; el.append(document.createElement('br'), b); }
     feed.insertBefore(el, more); S.quiet = null;
   }
+  // One render at a time. rebuild() bumps gen, so a render waiting on the network gives up.
   let rendering = null;
   function renderMore(upTo = 0) {
-    return rendering ||= (async () => {
+    rendering ||= doRender(upTo, S.gen).finally(() => {
+      rendering = null;
+      moreIO.unobserve(more); moreIO.observe(more); // re-check: still near the bottom?
+    });
+    return rendering;
+  }
+  async function doRender(upTo, gen) {
       try {
         let n = 0;
         while (S.next <= S.days && (n < 30 || S.next <= upTo)) {
           if (S.next > S.loaded) {
             more.className = 'end'; more.textContent = 'Loading…';
             await loadOlder();
+            if (gen !== S.gen) return;
           }
           const i = S.next++, d = dayUnits(i);
           if (i > 0 && !d.units.length) { const u = hiddenOn(i); S.quiet ? (S.quiet.to = i, S.quiet.untg += u) : (S.quiet = { from: i, to: i, untg: u }); continue; }
@@ -323,16 +331,20 @@ function mount(host, config) {
         markPlaying();
       } catch (e) {
         more.className = 'end'; more.textContent = `Couldn't load older recordings (${e.message || e}). Scroll to retry.`;
-      } finally { rendering = null; }
-      moreIO.unobserve(more); moreIO.observe(more); // re-check: still near the bottom?
-    })();
+      }
   }
-  function rebuild(keepDay) {
+  async function rebuild(keepDay) {
+    S.gen++;
+    await rendering;
     filter();
     feed.querySelectorAll('section,.quiet').forEach((e) => e.remove());
     S.next = 0; S.quiet = null;
     feed.scrollTop = 0;
-    return renderMore(keepDay).then(() => { if (keepDay) jumpToDay(keepDay); });
+    await renderTo(keepDay || 0);
+    if (keepDay) jumpToDay(keepDay);
+  }
+  async function renderTo(i) { // keep going until day i is on screen, even behind a render in flight
+    do await renderMore(i); while (S.next <= Math.min(i, S.days) && !more.textContent.startsWith("Couldn't"));
   }
   async function refreshToday() {
     const j = await api(`reolink/recordings?from=${iso(dayStart(0))}`);
@@ -512,7 +524,7 @@ function mount(host, config) {
     if (!dateEl.value) return;
     const [y, m, d] = dateEl.value.split('-').map(Number);
     const i = Math.min(S.days, Math.max(0, dayIndex(new Date(y, m - 1, d).getTime())));
-    await renderMore(i);
+    await renderTo(i);
     jumpToDay(i);
   });
 
