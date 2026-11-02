@@ -85,7 +85,7 @@ a dead end.
   back-to-back pieces.
 - Each recording comes with only its camera, its start and end times, and the
   NVR's detection tags: person, vehicle, animal, doorbell press, or plain
-  motion. About 1 in 5 recordings has no tag at all. Nothing says what
+  motion. About 4 in 10 recordings have no tag at all. Nothing says what
   happened in a recording or who was there.
 - A still picture from any moment of a recording can be fetched from the NVR
   in a fraction of a second (640×480), but nothing picks the moment that
