@@ -39,3 +39,9 @@ T4 opus C2 seed1: UC1 Y (0-1 taps), UC4 Y, UC3 Y +save (Doorbell filter: 1 clip)
 T5 sonnet C2 seed2: UC1 Y, UC4 Y, UC3 Y +save (Doorbell filter), UC2 Y, UC6 N (found 8:22 decoy, missed 8:59), UC5 N (scrolled crawl unfiltered; never used Animals). 4/6.
   friction: still text truncated; list pane small (pinned player + 3 chip rows + taller rows); "+N with no tag" easy to miss but matters; Person vs Doorbell press conflated.
 VERDICT round 2: doorbell tag + stills made UC2/UC3 near-instant, but C2 scored 9/12 vs C's 12/12 on the same seeds. Taller rows and extra chip rows shrank the list; untagged days stopped empty weeks collapsing. Next: keep the wins, restore density and collapse.
+
+# Round 3: C3 (2026-11-02)
+T6 opus C3 seed1: UC1 Y (glance), UC4 Y, UC3 Y +save ("Rang": 1 clip), UC2 Y, UC6 Y, UC5 Y (collapsed ranges; row text without playing). 6/6.
+  friction: "+N with no tag" expands everything and jumps to top; "Gate" chip vs "Gate & Shed"; overnight under "Today"; tapping a LIVE row plays from start; download unlabeled; long clips' single frame can hide events.
+T7 sonnet C3 seed2: UC1 Y, UC4 Y, UC3 Y +save (Rang: 1 clip), UC2 Y, UC6 Y (via All after People), UC5 N (found the decoy rat via Animals, then switched to All and sank into the 55h IR recording). 5/6.
+VERDICT round 3: C3 11/12 (C 12/12, C2 9/12 on the same seeds); doorbell and trash-can tasks now 1-3 taps. Every rats miss across all rounds involved the 55h continuous recording. Real NVR recordings are files of minutes (cache shows ~5 min doorbell files), so a single 55h recording is likely a mock artifact; check real data before designing for it.
