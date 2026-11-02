@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="harness.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Cameras C2</title>
+<style>
+:root{--bg:#000;--cell:#1c1c1e;--cell2:#2c2c2e;--sep:#38383a;--txt:#f2f2f7;--mut:#8e8e93;--acc:#0a84ff;--red:#ff453a}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font:15px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:disabled{opacity:.3;cursor:default}
+svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.f{fill:currentColor;stroke:none}
+#app{position:relative;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);padding-top:env(safe-area-inset-top)}
+@media (min-width:500px){
+  body{display:grid;place-items:center;background:#3a3a3c}
+  #app{width:390px;height:min(844px,100vh);border-radius:32px;box-shadow:0 20px 60px #0008;padding-top:0}
+}
+/* player: grid is 3 rows of 16:9 half-width tiles; single = one 16:9 video + controls, same total height */
+#player{aspect-ratio:16/13.5;flex:none;display:flex;flex-direction:column;background:#000}
+#grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:2px;height:100%}
+.tile{position:relative;overflow:hidden;text-align:left;transition:background .6s}
+.tile .nm{position:absolute;left:8px;top:6px;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000}
+.tile .cp{position:absolute;left:8px;right:8px;bottom:6px;font-size:11.5px;line-height:1.25;color:#fffd;text-shadow:0 1px 2px #000}
+.tile .lv{position:absolute;right:6px;top:6px;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:#fffc;background:#0006;border-radius:3px;padding:1px 4px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-left:5px;vertical-align:1px}
+#single{display:flex;flex-direction:column;height:100%}
+#video{position:relative;aspect-ratio:16/9;flex:none;display:grid;place-items:center;transition:background .6s;overflow:hidden}
+#cap{max-width:84%;text-align:center;font-size:17px;font-weight:500;text-shadow:0 1px 3px #000a}
+.vtop{position:absolute;left:10px;right:10px;top:8px;display:flex;justify-content:space-between;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000}
+.badge{background:var(--red);border-radius:4px;padding:1px 6px;font-size:11px;letter-spacing:.04em}
+#ctl{flex:1;display:flex;flex-direction:column;justify-content:space-between;padding:6px 12px 4px;background:var(--cell)}
+.r1{display:flex;align-items:center;gap:6px;min-height:30px}
+#info{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
+#info span{color:var(--mut);margin-left:6px}
+.pill{height:30px;min-width:44px;padding:0 10px;border-radius:15px;background:var(--cell2);font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px}
+.pill.red{background:var(--red);color:#fff}
+.r2{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}
+.r2 span{min-width:44px}.r2 span:last-child{text-align:right}
+#seek{flex:1;height:24px;accent-color:var(--txt);margin:0}
+.r3{display:flex;justify-content:space-around;align-items:center}
+.r3 button{width:52px;height:40px;display:grid;place-items:center;border-radius:20px;font-size:13px;font-weight:600}
+.r3 button:active,.pill:active,.row:active{background:var(--cell2)}
+#bplay svg{width:28px;height:28px}
+.chips{flex:none;display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;height:30px;padding:0 10px;border-radius:15px;background:var(--cell);font-size:13px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.chip[aria-pressed=true]{background:var(--txt);color:#000;font-weight:600}
+.cd{width:8px;height:8px;border-radius:50%}
+#filters{padding-top:0;border-bottom:.5px solid var(--sep)}
+#filters .sp{flex:1;min-width:0}
+#filters .chip{padding:0 12px}
+#bdate{position:relative}
+#date{position:absolute;inset:0;opacity:0;width:100%;pointer-events:none}
+#feed{flex:1;overflow-y:auto;overflow-anchor:none;overscroll-behavior:contain;padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+.dh{position:sticky;top:0;z-index:2;background:#000e;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);padding:8px 16px 6px}
+.dh .tt{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:16px}
+.dh .tt span{font-weight:400;font-size:12px;color:var(--mut)}
+.rib{position:relative;height:16px;margin-top:6px;border-radius:3px;background:var(--cell);overflow:hidden;cursor:pointer}
+.rib i{position:absolute;top:0;bottom:0;min-width:2px;border-radius:1px}
+.rib .fut{position:absolute;top:0;bottom:0;right:0;background:repeating-linear-gradient(135deg,#0000 0 3px,#ffffff10 3px 5px)}
+.hl{display:flex;justify-content:space-between;font-size:10px;color:var(--mut);margin-top:2px}
+.row{scroll-margin:76px 0 8px;display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:7px 16px;min-height:68px;border-radius:0}
+.row.on{background:#0a84ff26;box-shadow:inset 3px 0 var(--acc)}
+.row.flash{animation:fl 1.2s}
+@keyframes fl{0%,40%{background:#ffffff20}}
+.sw{position:relative;width:96px;height:54px;border-radius:6px;flex:none;overflow:hidden}
+.sw .st{position:absolute;left:4px;right:4px;top:3px;font-size:9px;line-height:1.15;color:#fffe;text-shadow:0 1px 2px #000;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.sw.stack{overflow:visible;box-shadow:4px -4px 0 -1px #ffffff30,8px -8px 0 -2px #ffffff18;margin-right:6px}
+.sw.stack .st{overflow:hidden}
+.sw b{position:absolute;right:3px;bottom:2px;font-size:10px;font-weight:600;background:#0009;border-radius:3px;padding:0 3px;font-variant-numeric:tabular-nums}
+.tx{flex:1;min-width:0}
+.t1{display:flex;align-items:center;gap:5px;font-weight:600;font-size:15px}
+.t1 svg{width:15px;height:15px;color:var(--mut)}
+.t1 .cn{font-weight:400;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t2{font-size:13px;color:var(--mut);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chev{color:var(--mut);transition:transform .2s}
+.burst.open .chev{transform:rotate(90deg)}
+.kids{background:#0d0d0e}
+.kids .row{padding-left:28px;min-height:48px}
+.kids .sw{width:80px;height:45px}
+.untg{margin-top:6px;font-size:12.5px;color:var(--acc);padding:4px 0}
+.quiet{padding:10px 16px;font-size:13px;color:var(--mut);text-align:center;border-top:.5px solid var(--sep);border-bottom:.5px solid var(--sep);margin:6px 0}
+.end{padding:20px;text-align:center;font-size:12px;color:var(--mut)}
+#toast{position:absolute;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;transition:.25s;background:#2c2c2ef2;padding:10px 16px;border-radius:14px;font-size:14px;white-space:nowrap;pointer-events:none;z-index:9}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<div id="app">
+  <section id="player">
+    <div id="grid"></div>
+    <div id="single" hidden>
+      <div id="video">
+        <div class="vtop"><span id="vcam"></span><span id="vbadge"></span></div>
+        <div id="cap"></div>
+      </div>
+      <div id="ctl">
+        <div class="r1">
+          <div id="info"></div>
+          <button class="pill" id="bspeed" aria-label="Playback speed">1×</button>
+          <button class="pill" id="bsave" aria-label="Save recording"></button>
+          <button class="pill red" id="blive" aria-label="Go live">Live</button>
+          <button class="pill" id="bgrid" aria-label="All cameras"></button>
+        </div>
+        <div class="r2"><span id="tel"></span><input type="range" id="seek" aria-label="Seek" min="0" step="0.1"><span id="ttot"></span></div>
+        <div class="r3">
+          <button id="bprev" aria-label="Previous clip"></button>
+          <button id="bback" aria-label="Skip back"></button>
+          <button id="bplay" aria-label="Play/pause"></button>
+          <button id="bfwd" aria-label="Skip forward"></button>
+          <button id="bnext" aria-label="Next clip"></button>
+        </div>
+      </div>
+    </div>
+  </section>
+  <nav id="cams" class="chips"></nav>
+  <div id="filters" class="chips">
+    <button class="chip" data-tag="" aria-pressed="true">All</button>
+    <button class="chip" data-tag="person">People</button>
+    <button class="chip" data-tag="vehicle">Vehicles</button>
+    <button class="chip" data-tag="animal">Animals</button>
+    <button class="chip" data-tag="doorbell">Doorbell</button>
+    <span class="sp"></span>
+    <button class="chip" id="bdate" aria-label="Jump to a day"><input type="date" id="date" tabindex="-1"></button>
+  </div>
+  <main id="feed"><div id="more"></div></main>
+  <div id="toast"></div>
+</div>
+<script>
+const MIN = 6e4, DAYMS = 864e5, DAYS = 45;
+const $ = (s) => document.querySelector(s);
+const I = {
+  person: '<circle cx="12" cy="7" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/>',
+  vehicle: '<path d="M3 16v-4l2.5-5h13l2.5 5v4z"/><circle cx="7.5" cy="16.5" r="1.8"/><circle cx="16.5" cy="16.5" r="1.8"/>',
+  animal: '<circle cx="6.5" cy="10" r="1.8"/><circle cx="10" cy="5.5" r="1.8"/><circle cx="14" cy="5.5" r="1.8"/><circle cx="17.5" cy="10" r="1.8"/><path d="M8 18c0-3 2-6 4-6s4 3 4 6c0 2-2 2-4 2s-4 0-4-2z"/>',
+  motion: '<path d="M3 12h4l2-5 4 10 2-5h6"/>',
+  play: '<path class="f" d="M7 4.5v15l12.5-7.5z"/>',
+  pause: '<path d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z"/>',
+  prev: '<path d="M5 5h2.5v14H5zM20 5v14L9 12z"/>',
+  next: '<path d="M16.5 5H19v14h-2.5zM4 5v14l11-7z"/>',
+  save: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+  cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
+  chev: '<path d="M9 6l6 6-6 6"/>',
+  doorbell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  unknown: '<circle cx="12" cy="12" r="8"/><path d="M9.8 9.5a2.3 2.3 0 1 1 3.2 2.1c-.6.3-1 .8-1 1.4v.5M12 16.5v.01"/>',
+};
+const svg = (k, cls = '') => k === 'play' || k === 'pause' || k === 'prev' || k === 'next'
+  ? `<svg class="f ${cls}" viewBox="0 0 24 24">${I[k].replace('class="f" ', '')}</svg>`
+  : `<svg class="${cls}" viewBox="0 0 24 24">${I[k]}</svg>`;
+const cam = Object.fromEntries(PROTO.cameras.map((c) => [c.id, c]));
+const PALETTE = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#9085e9']; // dataviz validator: all checks pass on dark
+const camDot = (id) => PALETTE[PROTO.cameras.findIndex((c) => c.id === id)];
+
+const S = { untagged: false, cam: 'all', tag: '', view: { mode: 'grid' }, playing: false, speed: 1, all: [], next: 0, quiet: null, open: new Set(), seeking: false };
+
+// ---- time helpers
+const dayStart = (i) => { const d = new Date(PROTO.now()); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i); return d.getTime(); };
+const dayIndex = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return Math.round((dayStart(0) - d.getTime()) / DAYMS); };
+const hm = (t) => new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+const hms = (t) => new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+const dayName = (i, short) => i === 0 ? 'Today' : i === 1 ? 'Yesterday'
+  : new Date(dayStart(i)).toLocaleDateString('en-US', short ? { weekday: 'short' } : { weekday: 'long', month: 'short', day: 'numeric' });
+const when = (t) => { const i = dayIndex(t); return (i < 7 ? dayName(i, true) : new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })) + ' ' + hm(t); };
+const ago = (t) => { const m = (PROTO.now() - t) / MIN; return m < 1 ? 'just now' : m < 60 ? `${Math.floor(m)} min ago` : m < 360 ? `${Math.floor(m / 60)} hr ago` : ''; };
+const clock = (s) => { s = Math.max(0, Math.floor(s)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = String(s % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`; };
+const short = (s) => s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h ${Math.round(s / 60) % 60}m` : `${Math.floor(s / 86400)}d ${Math.round(s / 3600) % 24}h`;
+const len = (c) => (c.end - c.start) / 1000;
+const color = (c) => PROTO.frame(c, 0).color;
+const KN = { doorbell: 'Doorbell press', person: 'Person', vehicle: 'Vehicle', animal: 'Animal' };
+const ordered = (tags) => ['doorbell', 'person', 'vehicle', 'animal'].filter((t) => tags.includes(t));
+const kind = (tags, untagged) => untagged ? 'Not tagged' : tags.length ? ordered(tags).map((t) => KN[t]).join(' · ') : 'Motion';
+const icons = (c) => c.untagged ? svg('unknown') : c.tags.length ? ordered(c.tags).map((t) => svg(t)).join('') : svg('motion');
+
+// ---- data
+function load() {
+  const ids = S.cam === 'all' ? PROTO.cameras.map((c) => c.id) : [S.cam];
+  S.hiddenUntagged = S.tag && !S.untagged ? ids.flatMap((id) => PROTO.clips(id, dayStart(DAYS))).filter((c) => c.untagged) : [];
+  S.all = ids.flatMap((id) => PROTO.clips(id, dayStart(DAYS)))
+    .filter((c) => !S.tag || c.tags.includes(S.tag) || (S.untagged && c.untagged))
+    .sort((a, b) => a.start - b.start);
+}
+// Short clips on one camera less than a minute apart collapse into one burst row.
+function dayUnits(i) {
+  const a = dayStart(i), b = dayStart(i - 1);
+  const inDay = S.all.filter((c) => c.start >= a && c.start < b);
+  const cont = S.all.filter((c) => c.start < a && c.end > a);
+  const runs = [], last = {};
+  for (const c of inDay) {
+    const r = last[c.cam], p = r && r[r.length - 1];
+    if (p && len(p) < 120 && len(c) < 120 && c.start - p.end < MIN) r.push(c);
+    else runs.push(last[c.cam] = [c]);
+  }
+  const units = runs.flatMap((r) => r.length >= 3 ? [r] : r.map((c) => [c]));
+  units.sort((x, y) => y[y.length - 1].start - x[x.length - 1].start);
+  return { a, inDay, cont, units };
+}
+
+// ---- feed rendering
+const feed = $('#feed'), more = $('#more');
+function stillHTML(c, badge, cls = '') {
+  const f = PROTO.still(c);
+  return `<span class="sw ${cls}" style="background:${f.color}"><span class="st">${f.caption}</span><b>${badge}</b></span>`;
+}
+function rowHTML(c, opts = {}) {
+  const ic = icons(c);
+  const camName = S.cam === 'all' ? `<span class="cn"><span class="cd" style="display:inline-block;background:${camDot(c.cam)};margin-right:4px"></span>${cam[c.cam].name}</span>` : '';
+  let sub;
+  if (opts.cont) sub = `Still recording from ${when(c.start)}`;
+  else if (len(c) > 3600 && !c.ongoing) sub = `${hm(c.start)} → ${when(c.end)}`;
+  else sub = [hm(c.start), ago(c.start)].filter(Boolean).join(' · ');
+  const live = c.ongoing ? '<span class="badge">LIVE</span>' : '';
+  return `<button class="row" data-play="${c.id}" data-t="${c.start}" ${opts.off ? `data-off="${opts.off}"` : ''} aria-label="${kind(c.tags, c.untagged)} ${cam[c.cam].name} ${hm(c.start)}">
+    ${stillHTML(c, c.ongoing ? 'now' : short(len(c)))}
+    <span class="tx"><span class="t1">${ic}${opts.cont ? 'Continued' : kind(c.tags, c.untagged)}${camName}</span><span class="t2">${sub}</span></span>${live}</button>`;
+}
+function burstHTML(r) {
+  const first = r[0], lastC = r[r.length - 1], key = first.id;
+  const tags = [...new Set(r.flatMap((c) => c.tags))];
+  const open = S.open.has(key);
+  return `<div class="burst${open ? ' open' : ''}" data-key="${key}">
+    <button class="row grp" data-burst="${key}" data-t="${lastC.start}" aria-label="Burst of ${r.length} clips">
+      ${stillHTML(lastC, r.length, 'stack')}
+      <span class="tx"><span class="t1">${tags.length ? ordered(tags).map((t) => svg(t)).join('') : svg('motion')}${r.length} clips${S.cam === 'all' ? `<span class="cn">${cam[first.cam].name}</span>` : ''}</span>
+      <span class="t2">${hm(first.start)}–${hm(lastC.end)} · ${kind(tags)}</span></span>
+      ${svg('chev', 'chev')}</button>
+    <div class="kids" ${open ? '' : 'hidden'}>${r.slice().reverse().map((c) => rowHTML(c)).join('')}</div></div>`;
+}
+function ribbonHTML(d, i) {
+  const bars = d.inDay.concat(d.cont).map((c) => {
+    const l = Math.max(0, (c.start - d.a) / DAYMS * 100), r = Math.min(100, (c.end - d.a) / DAYMS * 100);
+    return `<i style="left:${l}%;width:${Math.max(0, r - l)}%;background:${S.cam === 'all' ? camDot(c.cam) : 'var(--acc)'}"></i>`;
+  }).join('');
+  const fut = i === 0 ? `<span class="fut" style="left:${(PROTO.now() - d.a) / DAYMS * 100}%"></span>` : '';
+  return `<div class="rib" data-a="${d.a}" aria-label="Day timeline">${bars}${fut}</div><div class="hl"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>`;
+}
+function daySection(i, d = dayUnits(i)) {
+  const el = document.createElement('section');
+  el.dataset.day = i;
+  const n = d.inDay.length;
+  const hid = S.hiddenUntagged.filter((c) => c.start >= d.a && c.start < dayStart(i - 1)).length;
+  const untg = S.tag ? `<button class="untg" data-untagged>${S.untagged ? 'Hide recordings with no tag' : `+ ${hid} with no tag`}</button>` : '';
+  el.innerHTML = `<div class="dh"><div class="tt">${dayName(i)}<span>${n ? `${n} clip${n > 1 ? 's' : ''}` : i ? 'No new clips' : 'No activity yet'}</span></div>${ribbonHTML(d, i)}${hid || S.untagged ? untg : ''}</div>`
+    + d.units.map((u) => u.length > 1 ? burstHTML(u) : rowHTML(u[0])).join('')
+    + d.cont.map((c) => rowHTML(c, { cont: true, off: (d.a - c.start) / 1000 })).join('');
+  return el;
+}
+function flushQuiet() {
+  if (!S.quiet) return;
+  const q = S.quiet, el = document.createElement('div');
+  el.className = 'quiet'; el.dataset.from = q.from; el.dataset.to = q.to;
+  const nm = (i) => new Date(dayStart(i)).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  el.textContent = `Nothing ${S.tag ? 'matching ' : ''}${q.from === q.to ? 'on ' + nm(q.from) : `from ${nm(q.to)} to ${nm(q.from)}`}`;
+  feed.insertBefore(el, more); S.quiet = null;
+}
+function renderMore() {
+  let n = 0;
+  while (S.next <= DAYS && n < 30) {
+    const i = S.next++, d = dayUnits(i);
+    if (i > 0 && !d.units.length && !d.cont.length && !(S.hiddenUntagged.some((c) => c.start >= d.a && c.start < dayStart(i - 1)))) { S.quiet ? (S.quiet.to = i) : (S.quiet = { from: i, to: i }); continue; }
+    flushQuiet();
+    feed.insertBefore(daySection(i, d), more);
+    n += d.units.length + 2;
+  }
+  if (S.next > DAYS) { flushQuiet(); more.className = 'end'; more.textContent = `Recordings are kept for ${DAYS} days`; }
+  markPlaying();
+}
+function rebuild() {
+  load();
+  feed.querySelectorAll('section,.quiet').forEach((e) => e.remove());
+  S.next = 0; S.quiet = null; more.className = ''; more.textContent = '';
+  feed.scrollTop = 0;
+  renderMore();
+}
+function refreshToday() {
+  load();
+  const old = feed.querySelector('section[data-day="0"]');
+  const h = old.offsetHeight, nu = daySection(0);
+  old.replaceWith(nu);
+  if (feed.scrollTop > 0) feed.scrollTop += nu.offsetHeight - h;
+  markPlaying();
+}
+new IntersectionObserver((es) => { if (es[0].isIntersecting && S.next <= DAYS) renderMore(); }, { root: feed, rootMargin: '600px' }).observe(more);
+
+function markPlaying(scroll) {
+  feed.querySelectorAll('.row.on').forEach((e) => e.classList.remove('on'));
+  if (S.view.mode !== 'clip') return;
+  let el = feed.querySelector(`.row[data-play="${S.view.clip.id}"]`);
+  if (!el) return;
+  if (el.closest('.kids')?.hidden) el = el.closest('.burst').querySelector('.grp');
+  el.classList.add('on');
+  if (scroll) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+function scrollToRow(el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+
+feed.addEventListener('click', (e) => {
+  const rib = e.target.closest('.rib');
+  if (rib) {
+    const r = rib.getBoundingClientRect(), t = +rib.dataset.a + (e.clientX - r.left) / r.width * DAYMS;
+    const rows = [...rib.closest('section').querySelectorAll('.row:not(.kids .row)')];
+    if (!rows.length) return;
+    scrollToRow(rows.reduce((b, x) => Math.abs(x.dataset.t - t) < Math.abs(b.dataset.t - t) ? x : b));
+    return;
+  }
+  if (e.target.closest('[data-untagged]')) { S.untagged = !S.untagged; PROTO.log('untagged', { on: S.untagged }); rebuild(); return; }
+  const b = e.target.closest('[data-burst]');
+  if (b) {
+    const w = b.closest('.burst'), k = w.dataset.key, kids = w.querySelector('.kids');
+    kids.hidden = !kids.hidden; w.classList.toggle('open', !kids.hidden);
+    kids.hidden ? S.open.delete(k) : S.open.add(k);
+    markPlaying(); return;
+  }
+  const p = e.target.closest('[data-play]');
+  if (p) playClip(S.all.find((c) => c.id === p.dataset.play), +(p.dataset.off || 0));
+});
+
+// ---- player
+const grid = $('#grid'), single = $('#single');
+grid.innerHTML = PROTO.cameras.map((c) => `<button class="tile" data-cam="${c.id}" aria-label="${c.name} live"><span class="nm">${c.name}<span class="dot" hidden></span></span><span class="lv">LIVE</span><span class="cp"></span></button>`).join('');
+grid.addEventListener('click', (e) => { const t = e.target.closest('[data-cam]'); if (t) selectCam(t.dataset.cam); });
+$('#bsave').innerHTML = svg('save');
+$('#bgrid').innerHTML = svg('grid');
+$('#bprev').innerHTML = svg('prev');
+$('#bnext').innerHTML = svg('next');
+
+function playClip(c, off = 0) {
+  if (!c) return;
+  S.view = { mode: 'clip', clip: { ...c }, t: off };
+  S.playing = true;
+  PROTO.log('play', { clip: c.id });
+  draw(); markPlaying(true);
+}
+function goLive(id) {
+  S.view = { mode: 'live', cam: id, at: 0 };
+  S.playing = false;
+  PROTO.log('live', { cam: id });
+  draw(); markPlaying();
+}
+function showGrid() { S.view = { mode: 'grid', at: 0 }; S.playing = false; draw(); markPlaying(); }
+function step(dir) {
+  const v = S.view;
+  if (v.mode === 'live') { const mine = S.all.filter((c) => c.cam === v.cam); return playClip(mine[mine.length - 1]); }
+  const st = v.clip.start;
+  const c = dir > 0 ? S.all.find((x) => x.start > st) : S.all.findLast((x) => x.start < st);
+  if (c) playClip(c); else if (dir > 0) { S.playing = false; draw(); }
+  return c;
+}
+const skipBy = () => len(S.view.clip) > 600 ? 300 : 10;
+function seek(t) { const v = S.view; v.t = Math.min(Math.max(0, t), len(v.clip)); draw(); }
+
+$('#bplay').onclick = () => {
+  const v = S.view; if (v.mode !== 'clip') return;
+  if (!S.playing && v.t >= len(v.clip) - 0.1) v.t = 0;
+  S.playing = !S.playing; draw();
+};
+$('#bback').onclick = () => seek(S.view.t - skipBy());
+$('#bfwd').onclick = () => seek(S.view.t + skipBy());
+$('#bprev').onclick = () => { const v = S.view; if (v.mode === 'clip' && v.t > 3) seek(0); else step(-1); };
+$('#bnext').onclick = () => step(1);
+$('#blive').onclick = () => goLive(S.view.clip.cam);
+$('#bgrid').onclick = showGrid;
+$('#bspeed').onclick = () => { S.speed = { 1: 2, 2: 4, 4: 8, 8: 1 }[S.speed]; draw(); };
+$('#bsave').onclick = () => {
+  const c = S.view.clip;
+  PROTO.log('download', { clip: c.id });
+  toast(`Saved ${cam[c.cam].name}, ${when(c.start)} to Files`);
+};
+const seekEl = $('#seek');
+seekEl.addEventListener('input', () => { S.seeking = true; S.view.t = +seekEl.value; draw(); });
+seekEl.addEventListener('change', () => { S.seeking = false; });
+$('#video').addEventListener('click', () => $('#bplay').click());
+
+let lastCap = {};
+const setText = (el, s) => { if (el.textContent !== s) el.textContent = s; };
+function draw() {
+  const v = S.view;
+  grid.hidden = v.mode !== 'grid'; single.hidden = v.mode === 'grid';
+  if (v.mode === 'grid') {
+    for (const t of grid.children) {
+      const f = PROTO.frame({ live: t.dataset.cam });
+      t.style.background = f.color;
+      setText(t.querySelector('.cp'), f.caption);
+      t.querySelector('.dot').hidden = !PROTO.clips(t.dataset.cam, PROTO.now() - 1).some((c) => c.ongoing);
+    }
+    return;
+  }
+  const isClip = v.mode === 'clip', c = v.clip, camId = isClip ? c.cam : v.cam;
+  const f = isClip ? PROTO.frame(c, v.t) : PROTO.frame({ live: v.cam });
+  $('#video').style.background = f.color;
+  setText($('#cap'), f.caption);
+  setText($('#vcam'), cam[camId].name);
+  $('#vbadge').className = isClip ? '' : 'badge';
+  setText($('#vbadge'), isClip ? hms(c.start + v.t * 1000) : 'LIVE');
+  $('#info').innerHTML = isClip
+    ? `<b>${kind(c.tags)}</b><span>${when(c.start)}</span>`
+    : `<b>${cam[camId].name}</b><span>Live · ${hms(PROTO.now())}</span>`;
+  $('#bspeed').hidden = $('#bsave').hidden = $('#blive').hidden = !isClip;
+  $('#bgrid').hidden = isClip || S.cam !== 'all';
+  setText($('#bspeed'), S.speed + '×');
+  const L = isClip ? len(c) : 1;
+  seekEl.disabled = !isClip; seekEl.max = L;
+  if (!S.seeking) seekEl.value = isClip ? v.t : 1;
+  setText($('#tel'), isClip ? clock(v.t) : '');
+  setText($('#ttot'), isClip ? (c.ongoing ? '-' + clock(L - v.t) : clock(L)) : 'Live');
+  $('#bplay').innerHTML = svg(isClip && S.playing ? 'pause' : 'play');
+  $('#bplay').disabled = !isClip;
+  const sk = isClip ? skipBy() : 10, u = sk >= 60 ? `${sk / 60}m` : `${sk}s`;
+  $('#bback').textContent = '−' + u; $('#bfwd').textContent = '+' + u;
+  $('#bback').disabled = $('#bfwd').disabled = !isClip;
+  $('#bprev').setAttribute('aria-label', isClip ? 'Previous clip' : 'Latest recording');
+  $('#bnext').disabled = !isClip;
+}
+
+// ---- cameras & filters
+const camsEl = $('#cams');
+camsEl.innerHTML = `<button class="chip" data-cam="all" aria-pressed="true">All</button>`
+  + PROTO.cameras.map((c) => `<button class="chip" data-cam="${c.id}"><span class="cd" style="background:${camDot(c.id)}"></span>${c.name}</button>`).join('');
+function selectCam(id) {
+  const changed = id !== S.cam;
+  S.cam = id;
+  camsEl.querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', b.dataset.cam === id));
+  camsEl.querySelector(`[data-cam="${id}"]`).scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  if (changed) rebuild();
+  id === 'all' ? showGrid() : goLive(id);
+}
+camsEl.addEventListener('click', (e) => { const b = e.target.closest('[data-cam]'); if (b) selectCam(b.dataset.cam); });
+$('#filters').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tag]'); if (!b) return;
+  S.tag = b.dataset.tag;
+  $('#filters').querySelectorAll('[data-tag]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+  rebuild();
+});
+const dateEl = $('#date'), bdate = $('#bdate');
+bdate.insertAdjacentHTML('afterbegin', svg('cal'));
+camsEl.appendChild(bdate); // the kinds row is full on a phone; the camera row has room
+const iso = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+// Test harness: native pickers don't show in testers' screenshots, so use the shared in-page one.
+bdate.onclick = () => PROTO.dayPicker((t) => { dateEl.value = iso(t); dateEl.dispatchEvent(new Event('change')); });
+dateEl.addEventListener('change', () => {
+  if (!dateEl.value) return;
+  const [y, m, d] = dateEl.value.split('-').map(Number);
+  const i = Math.min(DAYS, Math.max(0, dayIndex(new Date(y, m - 1, d).getTime())));
+  while (S.next <= i) renderMore();
+  const el = feed.querySelector(`section[data-day="${i}"]`)
+    || [...feed.querySelectorAll('.quiet')].find((q) => +q.dataset.from <= i && i <= +q.dataset.to);
+  if (el) { feed.scrollTop = el.offsetTop - feed.offsetTop; if (el.classList.contains('quiet')) scrollToRow(el); }
+});
+
+let toastT;
+function toast(s) { const t = $('#toast'); t.textContent = s; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400); }
+
+// ---- clock
+let last = performance.now(), liveAt = 0, refreshAt = Date.now();
+setInterval(() => {
+  const now = performance.now(), dt = (now - last) / 1000; last = now;
+  const v = S.view;
+  if (v.mode === 'clip') {
+    if (v.clip.ongoing) v.clip.end = PROTO.now();
+    if (S.playing && !S.seeking) {
+      v.t += dt * S.speed;
+      if (v.t >= len(v.clip)) {
+        if (v.clip.ongoing) { goLive(v.clip.cam); toast('Caught up — now live'); }
+        else { v.t = len(v.clip); S.playing = false; } // calm wins: never move on by itself
+      }
+    }
+    draw();
+  } else if (now - liveAt > 3000) { liveAt = now; draw(); }
+  if (Date.now() - refreshAt > 30000) { refreshAt = Date.now(); refreshToday(); }
+}, 200);
+
+rebuild();
+draw();
+</script>
+</body>
+</html>

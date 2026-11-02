@@ -131,6 +131,7 @@
   const ring = P_('doorbell', u3, 38, 'person', [[0, 'Someone walks up the front path'], [8, `They ring the doorbell: ${VIS[V]}`], [18, 'Their face is clearly visible as they wait at the door'], [30, 'They tuck a note into the door and walk away']]);
   P_('doorbell', u3 - between(30, 60) * MIN, 14, 'person', `${cap(VIS[(V + 1) % 3])} walks past on the sidewalk`);
   P_('doorbell', u3 + between(20, 40) * MIN, 22, 'person', [[0, `${cap(VIS[(V + 2) % 3])} walks up to the porch`], [10, 'They leave a package by the door without ringing']]);
+  ring.tags.push('doorbell'); // the NVR tags a recording when the button is pressed
   key.tasks.push({ uc: 3, task: 'Who rang the doorbell this morning? Describe them.', answer: `${cap(VIS[V])}, ${hm(u3)}` });
   key.tasks.push({ uc: 'keep', task: 'Save the recording of that doorbell ring off the phone.', answer: `download of ${ring.id}` });
 
@@ -182,7 +183,9 @@
       for (let i = 0; i < n; i++) {
         let x = r() * total, k = p.kinds[0];
         for (const kk of p.kinds) { if ((x -= kk[1]) < 0) { k = kk; break; } }
-        clip(bg, cam.id, sampleTime(d0, k[0]), dur(), k[0], text(pick(k[2])));
+        const c = clip(bg, cam.id, sampleTime(d0, k[0]), dur(), k[0], text(pick(k[2])));
+        // Like the real NVR, about 1 in 5 recordings arrives with no tag at all.
+        if (nid % 5 === 0) { c.tags = []; c.untagged = true; }
       }
       if (p.burst && r() < p.burst[0]) {
         let t = sampleTime(d0, p.burst[1]);
@@ -208,7 +211,7 @@
   const clips = (camId, from = -Infinity, to = Infinity) => {
     const t = now();
     return byCam[camId].filter((c) => c.start <= t && c.start < to && c.end > from)
-      .map((c) => ({ id: c.id, cam: c.cam, start: c.start, end: Math.min(c.end, t), tags: c.tags, ongoing: c.end > t }));
+      .map((c) => ({ id: c.id, cam: c.cam, start: c.start, end: Math.min(c.end, t), tags: c.tags, untagged: !!c.untagged, ongoing: c.end > t }));
   };
   const find = (id) => { for (const k in byCam) { const c = byCam[k].find((x) => x.id === id); if (c) return c; } };
 
@@ -246,6 +249,9 @@
     host.style.position = 'relative'; host.appendChild(box);
   };
 
-  window.PROTO = { cameras: CAMERAS, now, clips, frame, log, dayPicker, task: q.get('task') };
+  // A still picture per recording, from partway in (the real one comes from the NVR on request).
+  const still = (c) => frame(c, Math.min((c.end - c.start) / 2000, 15));
+
+  window.PROTO = { cameras: CAMERAS, now, clips, frame, still, log, dayPicker, task: q.get('task') };
   if (typeof document === 'undefined') window.PROTO.answerKey = key; // only for bin/answers
 })();
