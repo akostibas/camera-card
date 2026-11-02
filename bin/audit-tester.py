@@ -10,7 +10,7 @@ for line in open(sys.argv[1]):
         name, inp = b['name'].split('__')[-1], b.get('input', {})
         calls[name + (':' + inp['action'] if 'action' in inp else '')] += 1
         url = inp.get('url')
-        if url and not re.fullmatch(r'http://127\.0\.0\.1:8777/(alpha|bravo|charlie)\.html\?run=[\w-]+&seed=\d&task=\d', url):
+        if url and not re.fullmatch(r'http://127\.0\.0\.1:8777/(alpha|bravo|charlie2?)\.html\?run=[\w-]+&seed=\d&task=\d', url):
             bad.append(url)
 print(dict(calls))
 print('OFF-LIMITS URLS:', bad or 'none')
