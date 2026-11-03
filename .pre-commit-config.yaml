@@ -1,0 +1,19 @@
+# Public repo: no secrets, no images (screenshots can show the house), no personal email.
+repos:
+-   repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+    -   id: gitleaks
+-   repo: local
+    hooks:
+    -   id: no-images
+        name: no images (link to them instead)
+        language: fail
+        entry: images are never committed to this public repo
+        types: [image]
+    -   id: noreply-email
+        name: commit email is the GitHub no-reply address
+        language: system
+        entry: bin/check-commit-email
+        always_run: true
+        pass_filenames: false

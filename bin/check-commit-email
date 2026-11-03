@@ -1,0 +1,8 @@
+#!/bin/sh
+# Refuse commits authored with any email but the GitHub no-reply address: this repo is public.
+want=859429+akostibas@users.noreply.github.com
+got=$(git var GIT_AUTHOR_IDENT | sed -E 's/.*<(.*)>.*/\1/')
+[ "$got" = "$want" ] && exit 0
+echo "commit email is $got; this public repo needs $want" >&2
+echo "fix: git config user.email $want" >&2
+exit 1
