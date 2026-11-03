@@ -41,6 +41,7 @@ svg.f{fill:currentColor;stroke:none}
 .tile .lv{position:absolute;right:6px;top:6px;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:#fffc;background:#0006;border-radius:3px;padding:1px 4px}
 #single{display:flex;flex-direction:column;height:100%}
 #video{position:relative;flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;background:#000}
+#live ha-camera-stream{display:block;width:100%;height:100%}
 #video video,#video #live,#video #liveimg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #bfull{position:absolute;z-index:1;right:4px;bottom:4px;width:40px;height:40px;display:grid;place-items:center;color:#fff;filter:drop-shadow(0 1px 2px #000)}
 #video.max{position:fixed;inset:0;z-index:20}
@@ -113,6 +114,7 @@ const HTML = `
         <div class="vtop"><span id="vcam"></span><span id="vbadge"></span></div>
         <video id="vid" playsinline muted hidden></video>
         <img id="liveimg" alt="" hidden>
+        <div id="live"></div>
         <div id="cap"></div>
         <button id="bfull" aria-label="Full screen"></button>
       </div>
@@ -458,7 +460,7 @@ function mount(host, config) {
   });
 
   // ---- player
-  const grid = $('#grid'), single = $('#single'), vid = $('#vid'), liveImg = $('#liveimg'), seekEl = $('#seek');
+  const grid = $('#grid'), single = $('#single'), vid = $('#vid'), liveImg = $('#liveimg'), liveBox = $('#live'), seekEl = $('#seek');
   $('#bgrid').innerHTML = svg('grid');
   $('#bprev').innerHTML = svg('prev');
   $('#bnext').innerHTML = svg('next');
@@ -532,12 +534,13 @@ function mount(host, config) {
   function draw() {
     const v = S.view;
     grid.hidden = v.mode !== 'grid'; single.hidden = v.mode === 'grid';
-    if (v.mode !== 'live') $('#video').classList.remove('max');
+    if (v.mode !== 'live') { $('#video').classList.remove('max'); liveBox.replaceChildren(); } // ends the stream
     if (v.mode === 'grid') return drawGrid();
     const isClip = v.mode === 'clip', c = v.clip, ch = isClip ? c.cam : v.cam;
     vid.hidden = !isClip;
     liveImg.hidden = isClip;
     if (!isClip && liveImg.dataset.cam !== String(ch)) { liveImg.dataset.cam = ch; liveImg.removeAttribute('src'); delete liveImg.dataset.busy; loadPic(liveImg, picture(ch)); }
+    if (!isClip) drawStream(ch);
     setText($('#cap'), isClip ? (v.status || '') : picture(ch) ? '' : 'No live view for this camera');
     setText($('#vcam'), isClip ? `${cam[ch].name} · ${kind(c.tags, c.sched)} · ${when(c.start)}` : cam[ch].name);
     $('#vbadge').className = isClip ? '' : 'badge';
@@ -559,6 +562,18 @@ function mount(host, config) {
     $('#bprev').setAttribute('aria-label', isClip ? 'Previous clip' : 'Latest recording');
     $('#bnext').disabled = !isClip;
   }
+  // HA's own player: WebRTC through go2rtc, else HLS. The snapshot underneath shows until it connects.
+  // ha-camera-stream loads with HA's frontend, not on demand: without it, live stays snapshots.
+  function drawStream(ch) {
+    const st = cam[ch].entity && host.hass.states[cam[ch].entity];
+    let s = liveBox.firstElementChild;
+    if (!st || !customElements.get('ha-camera-stream')) return liveBox.replaceChildren();
+    if (s?.dataset.cam !== String(ch)) {
+      liveBox.replaceChildren(s = document.createElement('ha-camera-stream'));
+      Object.assign(s, { muted: true, fitMode: 'contain' }); s.dataset.cam = ch;
+    }
+    s.hass = host.hass; s.stateObj = st;
+  }
   function drawGrid() { for (const t of grid.children) { const img = t.querySelector('img'); if (!img.getAttribute('src')) loadPic(img, picture(+t.dataset.cam)); } }
   // Camera pictures: entity_picture is a fresh snapshot each fetch; its token rotates every 5 min.
   function loadPic(img, p) {
@@ -570,7 +585,7 @@ function mount(host, config) {
   for (const ev of ['load', 'error']) { grid.addEventListener(ev, done, true); liveImg.addEventListener(ev, done); }
   function tickPictures() {
     if (S.view.mode === 'grid') for (const t of grid.children) loadPic(t.querySelector('img'), picture(+t.dataset.cam));
-    if (S.view.mode === 'live') loadPic(liveImg, picture(S.view.cam));
+    if (S.view.mode === 'live' && !liveBox.firstElementChild) loadPic(liveImg, picture(S.view.cam));
   }
 
   // ---- cameras & filters
