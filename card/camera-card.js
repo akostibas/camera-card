@@ -217,10 +217,18 @@ function mount(host, config) {
       span.set(k, x ? [Math.min(x[0], c.start), Math.max(x[1], c.end)] : [c.start, c.end]);
     }
     // The NVR's file names don't say (reolink_aio can't parse ours), so judge by the file's shape.
-    const isSched = (k) => { const [a, b] = span.get(k), d = new Date(a), past = d.getMinutes() * 60 + d.getSeconds(); return b - a >= 20 * MIN || past <= 15 || past >= 3585; };
+    const shape = (k) => { const [a, b] = span.get(k), d = new Date(a), past = d.getMinutes() * 60 + d.getSeconds(); return b - a >= 20 * MIN || past <= 15 || past >= 3585; };
+    // The NVR also splits a motion file on the hour: that continuation is part of the motion event.
+    const alias = new Map(), prev = {};
+    for (const [k, [a, b]] of [...span].sort((x, y) => x[1][0] - y[1][0])) {
+      const p = prev[k.split('|')[0]];
+      alias.set(k, p && !shape(alias.get(p)) && a - span.get(p)[1] <= 2000 && b - a < 20 * MIN && shape(k) ? alias.get(p) : k);
+      prev[k.split('|')[0]] = k;
+    }
+    const isSched = (k) => shape(alias.get(k));
     const out = [], last = {};
     for (const c of slices) {
-      const e = last[c.cam], f = c.id.split('|'), fk = `${c.cam}|${f[4]}`, sched = isSched(fk);
+      const e = last[c.cam], f = c.id.split('|'), fk = alias.get(`${c.cam}|${f[4]}`), sched = isSched(fk);
       if (e && e.fk !== fk && len(c) < 10 && c.start <= e.end + 2000) continue; // a seconds-long stub at a file change: part of e
       if (e && e.fk === fk && c.start - e.end <= 2000 && (!sched || c.tags.join() === e.tags.join())) {
         if (c.end > e.end) { e.end = c.end; e.id = e.id.replace(/[^|]+$/, f[6]); }
@@ -464,6 +472,8 @@ function mount(host, config) {
     try {
       const { url } = await api('reolink/play?id=' + encodeURIComponent(c.id));
       if (my !== S.playSeq) return;
+      // iPhone can open a still-downloading clip at its newest part, ignoring the playlist's start.
+      vid.addEventListener('loadedmetadata', () => { if (vid.currentTime > 0.5) vid.currentTime = 0; }, { once: true });
       vid.src = url;
       vid.playbackRate = S.speed;
       await vid.play();
