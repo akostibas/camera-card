@@ -1,12 +1,24 @@
 #!/bin/sh
-# Push the working card to cherry's Home Assistant for testing: no restart, just reload the dashboard.
-# HA loads /local/camera-card/loader.js (family-infra lovelace.yaml), which imports the card with a
-# fresh query string so browsers and the iPhone app never serve a stale copy.
+# Put the committed card on cherry as a release candidate: tag vX.Y.Z-rcN, push the tag, and have
+# family-infra install it. cherry's /local is cached for a month, so every test build needs its own URL.
+# Usage: bin/dev-push [vX.Y.Z]   (default: the next minor after the latest release)
+# The next routine family-infra apply puts cherry back on its committed pin.
 set -eu
 cd "$(dirname "$0")/.."
+infra_dir=${FAMILY_INFRA:-$HOME/LocalDocs/family-infra}
+
+if ! git diff --quiet HEAD; then echo "dev-push: uncommitted changes; commit them first (the RC is built from a tag)" >&2; exit 1; fi
+[ -d "$infra_dir" ] || { echo "dev-push: no family-infra checkout at $infra_dir (set FAMILY_INFRA)" >&2; exit 1; }
 node --check card/camera-card.js
-dest=/opt/homeassistant/config/www/camera-card
-put() { ssh cherry.lan "sudo install -D -m 0644 -o homeassistant -g homeassistant /dev/stdin $dest/$1"; }
-put camera-card.js < card/camera-card.js
-printf "import('/local/camera-card/camera-card.js?t=' + Date.now());\n" | put loader.js
-echo "pushed $(git rev-parse --short HEAD)$(git diff --quiet || echo '+dirty') to cherry:$dest"
+
+git fetch -q --tags origin
+base=${1:-$(git tag -l 'v*' | grep -v -- -rc | sort -V | tail -1 | awk -F. '{print $1 "." $2+1 ".0"}')}
+n=$(( $(git tag -l "$base-rc*" | wc -l) + 1 ))
+tag=$base-rc$n
+echo "branch $(git branch --show-current) @ $(git rev-parse --short HEAD) -> $tag"
+
+git tag -a "$tag" -m "Release candidate $tag"
+git push -q origin "$tag"
+cd "$infra_dir"
+infra apply ansible --host cherry --tags camera-card --yes -- -e camera_card_version="$tag"
+echo "cherry now serves $tag; Home Assistant restarts (~1 min), then reload the dashboard"
