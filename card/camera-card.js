@@ -69,7 +69,7 @@ svg.f{fill:currentColor;stroke:none}
 #bdate{position:relative}
 #date{position:absolute;inset:0;opacity:0;width:100%}
 #feed{flex:1;overflow-y:auto;overflow-anchor:none;overscroll-behavior:contain;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
-.dh{position:sticky;top:0;z-index:2;background:#000e;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);padding:8px 16px 6px}
+.dh{position:sticky;top:0;z-index:2;background:#000;padding:8px 16px 6px}
 .dh .tt{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:16px}
 .dh .tt span{font-weight:400;font-size:12px;color:var(--mut)}
 .rib{position:relative;height:16px;margin-top:6px;border-radius:3px;background:var(--cell);overflow:hidden;cursor:pointer}
@@ -149,11 +149,12 @@ const HTML = `
 const dayStart = (i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i); return d.getTime(); };
 const dayIndex = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return Math.round((dayStart(0) - d.getTime()) / DAYMS); };
 const iso = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-const hm = (t) => new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-const hms = (t) => new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
-const dayName = (i, short) => i === 0 ? 'Today' : i === 1 ? 'Yesterday'
-  : new Date(dayStart(i)).toLocaleDateString('en-US', short ? { weekday: 'short' } : { weekday: 'long', month: 'short', day: 'numeric' });
-const when = (t) => { const i = dayIndex(t); return (i < 7 ? dayName(i, true) : new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })) + ' ' + hm(t); };
+const fmt = (o) => new Intl.DateTimeFormat('en-US', o).format; // one formatter each: toLocale* builds one per call
+const hm = fmt({ hour: 'numeric', minute: '2-digit' }), hms = fmt({ hour: 'numeric', minute: '2-digit', second: '2-digit' });
+const wkS = fmt({ weekday: 'short' }), wkL = fmt({ weekday: 'long', month: 'short', day: 'numeric' }), md = fmt({ month: 'short', day: 'numeric' });
+const dayName = (i, short) => i === 0 ? 'Today' : i === 1 ? 'Yesterday' : (short ? wkS : wkL)(dayStart(i));
+const when = (t) => { const i = dayIndex(t); return (i < 7 ? dayName(i, true) : md(t)) + ' ' + hm(t); };
+const errText = (e) => e?.body?.message || e?.message || e?.error || e?.status_code || String(e);
 const ago = (t) => { const m = (Date.now() - t) / MIN; return m < 1 ? 'just now' : m < 60 ? `${Math.floor(m)} min ago` : m < 360 ? `${Math.floor(m / 60)} hr ago` : ''; };
 const clock = (s) => { s = Math.max(0, Math.floor(s)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = String(s % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`; };
 const short = (s) => s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.floor(s / 3600)}h ${Math.round(s / 60) % 60}m`;
@@ -172,6 +173,8 @@ class CameraCard extends HTMLElement {
     if (!this._started) { this._started = true; mount(this, this._config); }
   }
   get hass() { return this._hass; }
+  connectedCallback() { this._timers?.start(); }
+  disconnectedCallback() { this._timers?.stop(); }
 }
 
 function mount(host, config) {
@@ -226,7 +229,7 @@ function mount(host, config) {
       if (e.isIntersecting) { stillIO.unobserve(el); stillQ.push(el); }
     }
     pumpStills();
-  }, { root: null, rootMargin: '300px' });
+  }, { root: root.querySelector('#feed'), rootMargin: '300px' });
   async function pumpStills() {
     while (stillBusy < 4 && stillQ.length) {
       const el = stillQ.pop(); // newest request first: what the user scrolled to last
@@ -236,11 +239,13 @@ function mount(host, config) {
       (async () => {
         try {
           let url = stillUrls.get(key);
-          if (!url) {
+          if (url) { stillUrls.delete(key); stillUrls.set(key, url); } // most recently used last
+          else {
             const r = await host.hass.fetchWithAuth(`/api/reolink/still/${key}`);
             if (!r.ok) throw new Error(r.status);
             url = URL.createObjectURL(await r.blob());
             stillUrls.set(key, url);
+            if (stillUrls.size > 300) { const [k, u] = stillUrls.entries().next().value; stillUrls.delete(k); URL.revokeObjectURL(u); }
           }
           el.insertAdjacentHTML('afterbegin', `<img alt="" src="${url}">`);
         } catch { /* leave the grey box */ } finally { stillBusy--; pumpStills(); }
@@ -267,7 +272,7 @@ function mount(host, config) {
       <button class="row grp" data-burst="${esc(key)}" data-t="${lastC.start}" aria-label="Burst of ${r.length} clips">
         ${stillHTML(lastC, r.length, 'stack')}
         <span class="tx"><span class="t1">${tags.length ? ordered(tags).map((t) => svg(t)).join('') : svg('motion')}${r.length} clips${S.cam === 'all' ? `<span class="cn">${esc(cam[first.cam].short)}</span>` : ''}</span>
-        <span class="t2">${hm(first.start)}–${hm(lastC.end)} · ${kind(tags)}</span></span>
+        <span class="t2">${hm(first.start)}–${hm(lastC.end)} · ${kind(tags, r.every((c) => c.untagged))}</span></span>
         ${svg('chev', 'chev')}</button>
       <div class="kids" ${open ? '' : 'hidden'}>${r.slice().reverse().map((c) => rowHTML(c)).join('')}</div></div>`;
   }
@@ -302,9 +307,10 @@ function mount(host, config) {
   // One render at a time. rebuild() bumps gen, so a render waiting on the network gives up.
   let rendering = null;
   function renderMore(upTo = 0) {
-    rendering ||= doRender(upTo, S.gen).finally(() => {
+    rendering ||= doRender(upTo, S.gen).then((failed) => {
       rendering = null;
-      moreIO.unobserve(more); moreIO.observe(more); // re-check: still near the bottom?
+      const recheck = () => { moreIO.unobserve(more); moreIO.observe(more); }; // still near the bottom?
+      failed ? setTimeout(recheck, 5000) : recheck();
     });
     return rendering;
   }
@@ -326,11 +332,12 @@ function mount(host, config) {
         more.className = ''; more.textContent = '';
         if (S.next > S.days) {
           flushQuiet(); more.className = 'end';
-          more.textContent = `That's everything: the NVR keeps recordings back to ${new Date(S.oldest).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+          more.textContent = `That's everything: the NVR keeps recordings back to ${md(S.oldest)}`;
         }
         markPlaying();
       } catch (e) {
-        more.className = 'end'; more.textContent = `Couldn't load older recordings (${e.message || e}). Scroll to retry.`;
+        more.className = 'end'; more.textContent = `Couldn't load older recordings (${errText(e)}). Retrying…`;
+        return true;
       }
   }
   async function rebuild(keepDay) {
@@ -348,12 +355,16 @@ function mount(host, config) {
   }
   async function refreshToday() {
     const j = await api(`reolink/recordings?from=${iso(dayStart(0))}`);
+    const sig = j.recordings.map((r) => r.id).join();
+    if (sig === S.todaySig) return;
+    S.todaySig = sig;
     const t0 = dayStart(0);
     for (const [k, c] of S.recs) if (c.start >= t0) S.recs.delete(k);
     for (const r of j.recordings) S.recs.set(r.id, toRec(r));
     filter();
     const old = feed.querySelector('section[data-day="0"]');
     if (!old) return;
+    old.querySelectorAll('[data-still]').forEach((x) => stillIO.unobserve(x));
     const h = old.offsetHeight, nu = daySection(0);
     old.replaceWith(nu);
     if (feed.scrollTop > 0) feed.scrollTop += nu.offsetHeight - h;
@@ -368,9 +379,16 @@ function mount(host, config) {
     if (!el) return;
     if (el.closest('.kids')?.hidden) el = el.closest('.burst').querySelector('.grp');
     el.classList.add('on');
-    if (scroll) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (scroll) {
+      const top = el.offsetTop - feed.offsetTop, pad = 76; // below the sticky day header
+      if (top - pad < feed.scrollTop) feed.scrollTo({ top: top - pad, behavior: 'smooth' });
+      else if (top + el.offsetHeight > feed.scrollTop + feed.clientHeight) feed.scrollTo({ top: top + el.offsetHeight - feed.clientHeight + 8, behavior: 'smooth' });
+    }
   }
-  function scrollToRow(el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+  function scrollToRow(el) {
+    feed.scrollTo({ top: el.offsetTop - feed.offsetTop - (feed.clientHeight - el.offsetHeight) / 2, behavior: 'smooth' });
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  }
   function jumpToDay(i) {
     const el = feed.querySelector(`section[data-day="${i}"]`)
       || [...feed.querySelectorAll('.quiet')].find((q) => +q.dataset.to <= i && i <= +q.dataset.from || +q.dataset.from <= i && i <= +q.dataset.to);
@@ -424,7 +442,7 @@ function mount(host, config) {
     } catch (e) {
       if (my !== S.playSeq) return;
       S.view.status = "Couldn't load this recording";
-      toast(`Couldn't load this recording (${e.message || e.status_code || e})`);
+      toast(`Couldn't load this recording (${errText(e)})`);
     }
     draw();
   }
@@ -463,7 +481,7 @@ function mount(host, config) {
     const isClip = v.mode === 'clip', c = v.clip, ch = isClip ? c.cam : v.cam;
     vid.hidden = !isClip;
     liveImg.hidden = isClip;
-    if (!isClip) { const p = picture(ch); if (p && !liveImg.dataset.p) { liveImg.dataset.p = 1; liveImg.src = p; } }
+    if (!isClip && liveImg.dataset.cam !== String(ch)) { liveImg.dataset.cam = ch; liveImg.removeAttribute('src'); delete liveImg.dataset.busy; loadPic(liveImg, picture(ch)); }
     setText($('#cap'), isClip ? (v.status || '') : picture(ch) ? '' : 'No live view for this camera');
     setText($('#vcam'), cam[ch].name);
     $('#vbadge').className = isClip ? '' : 'badge';
@@ -486,19 +504,19 @@ function mount(host, config) {
     $('#bprev').setAttribute('aria-label', isClip ? 'Previous clip' : 'Latest recording');
     $('#bnext').disabled = !isClip;
   }
-  function drawGrid() {
-    for (const t of grid.children) {
-      const p = picture(+t.dataset.cam), img = t.querySelector('img');
-      if (p && img.dataset.p !== p) { img.dataset.p = p; img.src = p; }
-    }
+  function drawGrid() { for (const t of grid.children) { const img = t.querySelector('img'); if (!img.getAttribute('src')) loadPic(img, picture(+t.dataset.cam)); } }
+  // Camera pictures: entity_picture is a fresh snapshot each fetch; its token rotates every 5 min.
+  function loadPic(img, p) {
+    if (!p || img.dataset.busy) return;
+    img.dataset.busy = 1;
+    img.src = p + (p.includes('?') ? '&' : '?') + 't=' + Date.now();
   }
-  // Camera pictures: HA's entity_picture is a still that refreshes when fetched again.
-  setInterval(() => {
-    if (!host.isConnected || document.hidden) return;
-    const bust = '&t=' + Date.now();
-    if (S.view.mode === 'grid') for (const img of grid.querySelectorAll('img')) { if (img.dataset.p) img.src = img.dataset.p + bust; }
-    if (S.view.mode === 'live') { const p = picture(S.view.cam); if (p) liveImg.src = p + bust; }
-  }, 2000);
+  const done = (e) => { if (e.target.tagName === 'IMG') delete e.target.dataset.busy; };
+  for (const ev of ['load', 'error']) { grid.addEventListener(ev, done, true); liveImg.addEventListener(ev, done); }
+  function tickPictures() {
+    if (S.view.mode === 'grid') for (const t of grid.children) loadPic(t.querySelector('img'), picture(+t.dataset.cam));
+    if (S.view.mode === 'live') loadPic(liveImg, picture(S.view.cam));
+  }
 
   // ---- cameras & filters
   const camsEl = $('#cams');
@@ -507,7 +525,7 @@ function mount(host, config) {
     S.cam = ch;
     camsEl.querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', b.dataset.cam === String(ch)));
     if (changed) rebuild();
-    if (ch === 'all') showGrid(); else { liveImg.dataset.p = ''; goLive(ch); }
+    if (ch === 'all') showGrid(); else goLive(ch);
   }
   camsEl.addEventListener('click', (e) => { const b = e.target.closest('[data-cam]'); if (b) selectCam(b.dataset.cam === 'all' ? 'all' : +b.dataset.cam); });
   grid.addEventListener('click', (e) => { const t = e.target.closest('[data-cam]'); if (t) selectCam(+t.dataset.cam); });
@@ -536,7 +554,7 @@ function mount(host, config) {
     $('#cap').textContent = '';
     more.className = 'end'; more.textContent = 'Loading…';
     let j;
-    try { j = await fetchDays(0, 0); } catch (e) { more.textContent = `Couldn't reach the cameras (${e.message || e}).`; return; }
+    try { j = await fetchDays(0, 0); } catch (e) { more.textContent = `Couldn't reach the cameras (${errText(e)}).`; return; }
     const ents = host.hass.entities || {}, devs = host.hass.devices || {};
     for (const c of j.cameras) {
       const name = c.name;
@@ -548,7 +566,7 @@ function mount(host, config) {
     }
     S.cams = j.cameras;
     const oldest = Math.min(...j.cameras.map((c) => c.oldest ? new Date(c.oldest + 'T00:00').getTime() : Date.now()));
-    S.oldest = oldest; S.days = dayIndex(oldest);
+    S.oldest = oldest; S.days = dayIndex(oldest); S.t0 = dayStart(0);
     for (const r of j.recordings) S.recs.set(r.id, toRec(r));
     S.loaded = 0;
     camsEl.innerHTML = `<button class="chip" data-cam="all" aria-pressed="true">All</button>`
@@ -558,7 +576,18 @@ function mount(host, config) {
     moreIO.observe(more);
     await rebuild();
     draw();
-    setInterval(() => { if (host.isConnected && !document.hidden) refreshToday().catch(() => {}); }, 30000);
+    let ticks = 0, timer = null;
+    const tick = () => {
+      if (document.hidden) return;
+      tickPictures();
+      if (++ticks % 15) return; // the rest every 30 s
+      if (dayStart(0) !== S.t0) { // midnight: yesterday is index 1 now
+        S.t0 = dayStart(0); S.days = dayIndex(S.oldest); S.loaded++; S.todaySig = null; dateEl.max = iso(Date.now());
+        rebuild().then(refreshToday).catch(() => {});
+      } else refreshToday().catch(() => {});
+    };
+    host._timers = { start() { timer ??= setInterval(tick, 2000); }, stop() { clearInterval(timer); timer = null; } };
+    if (host.isConnected) host._timers.start();
   })();
 }
 
