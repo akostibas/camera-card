@@ -74,7 +74,7 @@ svg.f{fill:currentColor;stroke:none}
 .rib i{position:absolute;top:0;bottom:0;min-width:2px;border-radius:1px}
 .rib .fut{position:absolute;top:0;bottom:0;right:0;background:repeating-linear-gradient(135deg,#0000 0 3px,#ffffff10 3px 5px)}
 .hl{display:flex;justify-content:space-between;font-size:10px;color:var(--mut);margin-top:2px}
-.row{scroll-margin:76px 0 8px;display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:7px 16px;min-height:56px}
+.row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:7px 16px;min-height:56px}
 .row.on{background:#0a84ff26;box-shadow:inset 3px 0 var(--acc)}
 .row.flash{animation:fl 1.2s}
 @keyframes fl{0%,40%{background:#ffffff20}}
@@ -177,7 +177,7 @@ function mount(host, config) {
   const root = host.attachShadow({ mode: 'open' });
   root.innerHTML = `<style>${STYLE}</style>${HTML}`;
   const $ = (s) => root.querySelector(s);
-  const api = (path) => host.hass.callApi('GET', path);
+  const api = (path) => Promise.race([host.hass.callApi('GET', path), new Promise((_, no) => setTimeout(() => no(new Error('timed out')), 15000))]);
   const S = { cams: [], recs: new Map(), loaded: -1, oldest: 0, untagged: false, cam: 'all', tag: '', view: { mode: 'grid' }, speed: 1, all: [], next: 0, quiet: null, open: new Set(), seeking: false, playSeq: 0, gen: 0 };
   const cam = {};
   const camDot = (ch) => PALETTE[S.cams.findIndex((c) => c.ch === ch) % PALETTE.length];
@@ -351,7 +351,7 @@ function mount(host, config) {
   }
   async function refreshToday() {
     const j = await api(`reolink/recordings?from=${iso(dayStart(0))}`);
-    const sig = j.recordings.map((r) => r.id).join();
+    const sig = j.recordings.map((r) => r.id).join() + '|' + Math.floor(Date.now() / (5 * MIN));
     if (sig === S.todaySig) return;
     S.todaySig = sig;
     const t0 = dayStart(0);
@@ -376,19 +376,20 @@ function mount(host, config) {
     if (el.closest('.kids')?.hidden) el = el.closest('.burst').querySelector('.grp');
     el.classList.add('on');
     if (scroll) {
-      const top = el.offsetTop - feed.offsetTop, pad = 76; // below the sticky day header
+      const top = feedTop(el), pad = 76; // below the sticky day header
       if (top - pad < feed.scrollTop) feed.scrollTo({ top: top - pad, behavior: 'smooth' });
       else if (top + el.offsetHeight > feed.scrollTop + feed.clientHeight) feed.scrollTo({ top: top + el.offsetHeight - feed.clientHeight + 8, behavior: 'smooth' });
     }
   }
+  const feedTop = (el) => el.getBoundingClientRect().top - feed.getBoundingClientRect().top + feed.scrollTop;
   function scrollToRow(el) {
-    feed.scrollTo({ top: el.offsetTop - feed.offsetTop - (feed.clientHeight - el.offsetHeight) / 2, behavior: 'smooth' });
+    feed.scrollTo({ top: feedTop(el) - (feed.clientHeight - el.offsetHeight) / 2, behavior: 'smooth' });
     el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
   }
   function jumpToDay(i) {
     const el = feed.querySelector(`section[data-day="${i}"]`)
       || [...feed.querySelectorAll('.quiet')].find((q) => +q.dataset.to <= i && i <= +q.dataset.from || +q.dataset.from <= i && i <= +q.dataset.to);
-    if (el) { feed.scrollTop = el.offsetTop - feed.offsetTop; if (el.classList.contains('quiet')) scrollToRow(el); }
+    if (el) { feed.scrollTop = feedTop(el); if (el.classList.contains('quiet')) scrollToRow(el); }
   }
 
   feed.addEventListener('click', (e) => {
@@ -502,8 +503,8 @@ function mount(host, config) {
   function drawGrid() { for (const t of grid.children) { const img = t.querySelector('img'); if (!img.getAttribute('src')) loadPic(img, picture(+t.dataset.cam)); } }
   // Camera pictures: entity_picture is a fresh snapshot each fetch; its token rotates every 5 min.
   function loadPic(img, p) {
-    if (!p || img.dataset.busy) return;
-    img.dataset.busy = 1;
+    if (!p || Date.now() - (img.dataset.busy || 0) < 10000) return;
+    img.dataset.busy = Date.now();
     img.src = p + (p.includes('?') ? '&' : '?') + 't=' + Date.now();
   }
   const done = (e) => { if (e.target.tagName === 'IMG') delete e.target.dataset.busy; };
@@ -575,11 +576,10 @@ function mount(host, config) {
     const tick = () => {
       if (document.hidden) return;
       tickPictures();
-      if (++ticks % 15) return; // the rest every 30 s
       if (dayStart(0) !== S.t0) { // midnight: yesterday is index 1 now
         S.t0 = dayStart(0); S.days = dayIndex(S.oldest); S.loaded++; S.todaySig = null; dateEl.max = iso(Date.now());
         rebuild().then(refreshToday).catch(() => {});
-      } else refreshToday().catch(() => {});
+      } else if (++ticks % 15 === 0) refreshToday().catch(() => {}); // every 30 s
     };
     host._timers = { start() { timer ??= setInterval(tick, 2000); }, stop() { clearInterval(timer); timer = null; } };
     if (host.isConnected) host._timers.start();
