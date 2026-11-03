@@ -1,7 +1,8 @@
 // Camera card for Home Assistant: recent recordings from our Reolink NVR as a scrolling list, with
 // one-tap playback, live view, and a camera grid. Data comes from the family-infra Reolink override
 // (/api/reolink/recordings, /still, /play). Ported from proto/charlie3.html.
-const VERSION = 'v1-dev';
+// Releases are served from /local/camera-card/vX.Y.Z[-rcN]/, so the URL is the version stamp.
+const VERSION = new URL(import.meta.url).pathname.match(/\/(v\d+\.\d+\.\d+(?:-rc\d+)?)\//)?.[1] ?? 'dev';
 const MIN = 6e4, DAYMS = 864e5, CHUNK = 30; // days per older-recordings fetch (~0.8 s for a month)
 const PALETTE = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#9085e9']; // dataviz validator: passes on dark
 const I = {
