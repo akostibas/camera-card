@@ -13,12 +13,16 @@ node --check card/camera-card.js
 
 git fetch -q --tags origin
 base=${1:-$(git tag -l 'v*' | grep -v -- -rc | sort -V | tail -1 | awk -F. '{print $1 "." $2+1 ".0"}')}
-n=$(( $(git tag -l "$base-rc*" | wc -l) + 1 ))
-tag=$base-rc$n
-echo "branch $(git branch --show-current) @ $(git rev-parse --short HEAD) -> $tag"
-
-git tag -a "$tag" -m "Release candidate $tag"
+tag=$(git tag -l "$base-rc*" --points-at HEAD | sort -V | tail -1)
+if [ -n "$tag" ]; then
+  echo "branch $(git branch --show-current) @ $(git rev-parse --short HEAD) is already $tag: installing it again"
+else
+  tag=$base-rc$(( $(git tag -l "$base-rc*" | wc -l) + 1 ))
+  echo "branch $(git branch --show-current) @ $(git rev-parse --short HEAD) -> $tag"
+  git tag -a "$tag" -m "Release candidate $tag"
+fi
 git push -q origin "$tag"
 cd "$infra_dir"
-infra apply ansible --host cherry --tags camera-card --yes -- -e camera_card_version="$tag"
+# mise: family-infra pins its own Go, and the current infra build lives under that toolchain
+mise exec -- infra apply ansible --host cherry --tags camera-card --yes -- -e camera_card_version="$tag"
 echo "cherry now serves $tag; Home Assistant restarts (~1 min), then reload the dashboard"
