@@ -158,8 +158,8 @@ const short = (s) => s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s /
 const len = (c) => (c.end - c.start) / 1000;
 const KN = { doorbell: 'Rang the bell', person: 'Person', vehicle: 'Vehicle', animal: 'Animal' };
 const ordered = (tags) => ['doorbell', 'person', 'vehicle', 'animal'].filter((t) => tags.includes(t));
-const kind = (tags, sched) => tags.length ? ordered(tags).map((t) => KN[t]).join(' · ') : sched ? 'Scheduled' : 'Motion';
-const icons = (c) => !c.tags.length && c.untagged ? svg('clock') : c.tags.length ? ordered(c.tags).map((t) => svg(t)).join('') : svg('motion');
+const kind = (tags, sched) => [sched && 'Scheduled', ...ordered(tags).map((t) => KN[t])].filter(Boolean).join(' · ') || 'Motion';
+const icons = (c) => (c.sched ? svg('clock') : '') + (c.tags.length ? ordered(c.tags).map((t) => svg(t)).join('') : c.sched ? '' : svg('motion'));
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 class CameraCard extends HTMLElement {
@@ -200,21 +200,30 @@ function mount(host, config) {
     const ids = new Set(S.cam === 'all' ? S.cams.map((c) => c.ch) : [S.cam]);
     const events = merge([...S.recs.values()].filter((c) => ids.has(c.cam)).sort((a, b) => a.start - b.start));
     S.byId = new Map(events.map((e) => [e.key, e]));
-    S.hiddenSched = !S.tag && !S.sched ? events.filter((e) => e.untagged) : [];
-    S.all = events.filter((e) => S.tag ? e.tags.includes(S.tag) : S.sched || !e.untagged);
+    const plain = (e) => e.sched && !e.tags.length;
+    S.hiddenSched = !S.tag && !S.sched ? events.filter(plain) : [];
+    S.all = events.filter((e) => S.tag ? e.tags.includes(S.tag) : S.sched || !plain(e));
   }
-  // The integration hands out recordings in 5-minute slices. Slices that follow on with no gap, on
-  // one camera, from one NVR file, with the same tags, are one event: play them as one cut.
+  // The integration hands out recordings in 5-minute slices; the NVR's own files are what count.
+  // A motion file is one event: merge its slices and their tags. An always-save file (about an hour,
+  // opened on the hour) splits wherever the tags change, so a sighting inside it is its own row.
   function merge(slices) {
+    const span = new Map();
+    for (const c of slices) {
+      const k = `${c.cam}|${c.id.split('|')[4]}`, x = span.get(k);
+      span.set(k, x ? [Math.min(x[0], c.start), Math.max(x[1], c.end)] : [c.start, c.end]);
+    }
+    const isSched = (k) => { const [a, b] = span.get(k), past = (a / 1000) % 3600; return b - a >= 20 * MIN || past <= 15 || past >= 3585; };
     const out = [], last = {};
     for (const c of slices) {
-      const e = last[c.cam], f = c.id.split('|');
+      const e = last[c.cam], f = c.id.split('|'), fk = `${c.cam}|${f[4]}`, sched = isSched(fk);
       if (e && len(c) < 10 && c.start <= e.end + 2000) continue; // a seconds-long stub at a file change: part of e
-      if (e && c.start - e.end <= 2000 && f[4] === e.file && c.untagged === e.untagged && c.tags.join() === e.tags.join()) {
+      if (e && e.fk === fk && c.start - e.end <= 2000 && (!sched || c.tags.join() === e.tags.join())) {
         if (c.end > e.end) { e.end = c.end; e.id = e.id.replace(/[^|]+$/, f[6]); }
+        if (!sched) e.tags = [...new Set([...e.tags, ...c.tags])].sort();
       } else {
         if (e && e.end - e.start < 10000 && c.start <= e.end + 2000) e.drop = true; // ... or just before it
-        out.push(last[c.cam] = { ...c, file: f[4], key: `${c.cam}:${c.start}` });
+        out.push(last[c.cam] = { ...c, fk, sched, key: `${c.cam}:${c.start}` });
       }
     }
     return out.filter((e) => !e.drop);
@@ -274,9 +283,9 @@ function mount(host, config) {
   function rowHTML(c) {
     const camName = S.cam === 'all' ? `<span class="cn"><span class="cd" style="background:${camDot(c.cam)}"></span>${esc(cam[c.cam].short)}</span>` : '';
     const sub = [len(c) >= 300 ? `${hm(c.start)}–${hm(c.end)}` : hm(c.start), ago(c.start)].filter(Boolean).join(' · ');
-    return `<button class="row" data-play="${c.key}" data-t="${c.start}" aria-label="${kind(c.tags, c.untagged)} ${esc(cam[c.cam].name)} ${hm(c.start)}">
+    return `<button class="row" data-play="${c.key}" data-t="${c.start}" aria-label="${kind(c.tags, c.sched)} ${esc(cam[c.cam].name)} ${hm(c.start)}">
       ${stillHTML(c, short(len(c)))}
-      <span class="tx"><span class="t1">${icons(c)}${kind(c.tags, c.untagged)}${camName}</span><span class="t2">${sub}</span></span></button>`;
+      <span class="tx"><span class="t1">${icons(c)}${kind(c.tags, c.sched)}${camName}</span><span class="t2">${sub}</span></span></button>`;
   }
   function burstHTML(r) {
     const first = r[0], lastC = r[r.length - 1], key = first.id;
@@ -286,7 +295,7 @@ function mount(host, config) {
       <button class="row grp" data-burst="${esc(key)}" data-t="${lastC.start}" aria-label="Burst of ${r.length} clips">
         ${stillHTML(lastC, r.length, 'stack')}
         <span class="tx"><span class="t1">${tags.length ? ordered(tags).map((t) => svg(t)).join('') : svg('motion')}${r.length} clips${S.cam === 'all' ? `<span class="cn">${esc(cam[first.cam].short)}</span>` : ''}</span>
-        <span class="t2">${hm(first.start)}–${hm(lastC.end)} · ${kind(tags, r.every((c) => c.untagged))}</span></span>
+        <span class="t2">${hm(first.start)}–${hm(lastC.end)} · ${kind(tags, r.every((c) => c.sched))}</span></span>
         ${svg('chev', 'chev')}</button>
       <div class="kids" ${open ? '' : 'hidden'}>${r.slice().reverse().map((c) => rowHTML(c)).join('')}</div></div>`;
   }
@@ -505,7 +514,7 @@ function mount(host, config) {
     liveImg.hidden = isClip;
     if (!isClip && liveImg.dataset.cam !== String(ch)) { liveImg.dataset.cam = ch; liveImg.removeAttribute('src'); delete liveImg.dataset.busy; loadPic(liveImg, picture(ch)); }
     setText($('#cap'), isClip ? (v.status || '') : picture(ch) ? '' : 'No live view for this camera');
-    setText($('#vcam'), isClip ? `${cam[ch].name} · ${kind(c.tags, c.untagged)} · ${when(c.start)}` : cam[ch].name);
+    setText($('#vcam'), isClip ? `${cam[ch].name} · ${kind(c.tags, c.sched)} · ${when(c.start)}` : cam[ch].name);
     $('#vbadge').className = isClip ? '' : 'badge';
     setText($('#vbadge'), isClip ? hms(c.start + v.t * 1000) : 'LIVE');
     $('#bspeed').hidden = $('#blive').hidden = !isClip;
