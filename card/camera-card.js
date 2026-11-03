@@ -1,7 +1,8 @@
 // Camera card for Home Assistant: recent recordings from our Reolink NVR as a scrolling list, with
 // one-tap playback, live view, and a camera grid. Data comes from the family-infra Reolink override
 // (/api/reolink/recordings, /still, /play). Ported from proto/charlie3.html.
-const VERSION = 'v1-dev';
+// Releases are served from /local/camera-card/vX.Y.Z[-rcN]/, so the URL is the version stamp.
+const VERSION = new URL(import.meta.url).pathname.match(/\/(v\d+\.\d+\.\d+(?:-rc\d+)?)\//)?.[1] ?? 'dev';
 const MIN = 6e4, DAYMS = 864e5, CHUNK = 30; // days per older-recordings fetch (~0.8 s for a month)
 const PALETTE = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#9085e9']; // dataviz validator: passes on dark
 const I = {
@@ -185,7 +186,7 @@ function mount(host, config) {
   root.innerHTML = `<style>${STYLE}</style>${HTML}`;
   const $ = (s) => root.querySelector(s);
   const api = (path) => Promise.race([host.hass.callApi('GET', path), new Promise((_, no) => setTimeout(() => no(new Error('timed out')), 15000))]);
-  const S = { cams: [], recs: new Map(), byId: new Map(), hiddenSched: [], loaded: -1, oldest: 0, sched: false, cam: 'all', tags: new Set(), view: { mode: 'grid' }, speed: 1, all: [], next: 0, quiet: null, open: new Set(), seeking: false, playSeq: 0, gen: 0 };
+  const S = { cams: [], recs: new Map(), byId: new Map(), hiddenSched: [], loaded: -1, oldest: 0, sched: false, pick: new Set(), tags: new Set(), view: { mode: 'grid' }, speed: 1, all: [], next: 0, quiet: null, open: new Set(), seeking: false, playSeq: 0, gen: 0 };
   const cam = {};
   const camDot = (ch) => PALETTE[S.cams.findIndex((c) => c.ch === ch) % PALETTE.length];
 
@@ -203,7 +204,7 @@ function mount(host, config) {
     filter();
   }
   function filter() {
-    const ids = new Set(S.cam === 'all' ? S.cams.map((c) => c.ch) : [S.cam]);
+    const ids = S.pick.size ? S.pick : new Set(S.cams.map((c) => c.ch));
     const events = merge([...S.recs.values()].filter((c) => ids.has(c.cam)).sort((a, b) => a.start - b.start));
     S.byId = new Map(events.map((e) => [e.key, e]));
     const plain = (e) => e.sched && !e.tags.length;
@@ -296,7 +297,7 @@ function mount(host, config) {
   const feed = $('#feed'), more = $('#more');
   const stillHTML = (c, badge, cls = '') => `<span class="sw ${cls}" data-still="${stillKey(c)}"><b>${badge}</b></span>`;
   function rowHTML(c) {
-    const camName = S.cam === 'all' ? `<span class="cn"><span class="cd" style="background:${camDot(c.cam)}"></span>${esc(cam[c.cam].short)}</span>` : '';
+    const camName = S.pick.size !== 1 ? `<span class="cn"><span class="cd" style="background:${camDot(c.cam)}"></span>${esc(cam[c.cam].short)}</span>` : '';
     const sub = [len(c) >= 300 ? `${hm(c.start)}–${hm(c.end)}` : hm(c.start), ago(c.start)].filter(Boolean).join(' · ');
     return `<button class="row" data-play="${c.key}" data-t="${c.start}" aria-label="${kind(c.tags, c.sched)} ${esc(cam[c.cam].name)} ${hm(c.start)}">
       ${stillHTML(c, short(len(c)))}
@@ -309,7 +310,7 @@ function mount(host, config) {
     return `<div class="burst${open ? ' open' : ''}" data-key="${esc(key)}">
       <button class="row grp" data-burst="${esc(key)}" data-t="${lastC.start}" aria-label="Burst of ${r.length} clips">
         ${stillHTML(lastC, r.length, 'stack')}
-        <span class="tx"><span class="t1">${tags.length ? ordered(tags).map((t) => svg(t)).join('') : svg('motion')}${r.length} clips${S.cam === 'all' ? `<span class="cn">${esc(cam[first.cam].short)}</span>` : ''}</span>
+        <span class="tx"><span class="t1">${tags.length ? ordered(tags).map((t) => svg(t)).join('') : svg('motion')}${r.length} clips${S.pick.size !== 1 ? `<span class="cn">${esc(cam[first.cam].short)}</span>` : ''}</span>
         <span class="t2">${hm(first.start)}–${hm(lastC.end)} · ${kind(tags, r.every((c) => c.sched))}</span></span>
         ${svg('chev', 'chev')}</button>
       <div class="kids" ${open ? '' : 'hidden'}>${r.slice().reverse().map((c) => rowHTML(c)).join('')}</div></div>`;
@@ -317,7 +318,7 @@ function mount(host, config) {
   function ribbonHTML(d, i) {
     const bars = d.inDay.map((c) => {
       const l = Math.max(0, (c.start - d.a) / DAYMS * 100), r = Math.min(100, (c.end - d.a) / DAYMS * 100);
-      return `<i style="left:${l}%;width:${Math.max(0, r - l)}%;background:${S.cam === 'all' ? camDot(c.cam) : 'var(--acc)'}"></i>`;
+      return `<i style="left:${l}%;width:${Math.max(0, r - l)}%;background:${S.pick.size !== 1 ? camDot(c.cam) : 'var(--acc)'}"></i>`;
     }).join('');
     const fut = i === 0 ? `<span class="fut" style="left:${(Date.now() - d.a) / DAYMS * 100}%"></span>` : '';
     return `<div class="rib" data-a="${d.a}" aria-label="Day timeline">${bars}${fut}</div><div class="hl"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>`;
@@ -547,7 +548,7 @@ function mount(host, config) {
     $('#vbadge').className = isClip ? '' : 'badge';
     setText($('#vbadge'), isClip ? hms(c.start + v.t * 1000) : 'LIVE');
     $('#bspeed').hidden = $('#blive').hidden = !isClip;
-    $('#bgrid').hidden = isClip || S.cam !== 'all';
+    $('#bgrid').hidden = isClip || S.pick.size === 1;
     setText($('#bspeed'), S.speed + '×');
     const L = isClip ? len(c) : 1;
     seekEl.disabled = !isClip; seekEl.max = L;
@@ -575,7 +576,12 @@ function mount(host, config) {
     }
     s.hass = host.hass; s.stateObj = st;
   }
-  function drawGrid() { for (const t of grid.children) { const img = t.querySelector('img'); if (!img.getAttribute('src')) loadPic(img, picture(+t.dataset.cam)); } }
+  function drawGrid() {
+    const tiles = [...grid.children].filter((t) => !(t.hidden = S.pick.size > 0 && !S.pick.has(+t.dataset.cam)));
+    const cols = tiles.length > 2 ? 2 : 1; // two 16:9 pictures fit the player best stacked
+    grid.style.gridTemplate = `repeat(${Math.ceil(tiles.length / cols)}, 1fr) / repeat(${cols}, 1fr)`;
+    for (const t of tiles) { const img = t.querySelector('img'); if (!img.getAttribute('src')) loadPic(img, picture(+t.dataset.cam)); }
+  }
   // Camera pictures: entity_picture is a fresh snapshot each fetch; its token rotates every 5 min.
   function loadPic(img, p) {
     if (!p || Date.now() - (img.dataset.busy || 0) < 10000) return;
@@ -585,21 +591,22 @@ function mount(host, config) {
   const done = (e) => { if (e.target.tagName === 'IMG') delete e.target.dataset.busy; };
   for (const ev of ['load', 'error']) { grid.addEventListener(ev, done, true); liveImg.addEventListener(ev, done); }
   function tickPictures() {
-    if (S.view.mode === 'grid') for (const t of grid.children) loadPic(t.querySelector('img'), picture(+t.dataset.cam));
+    if (S.view.mode === 'grid') for (const t of grid.children) if (!t.hidden) loadPic(t.querySelector('img'), picture(+t.dataset.cam));
     if (S.view.mode === 'live' && !liveBox.firstElementChild) loadPic(liveImg, picture(S.view.cam));
   }
 
   // ---- cameras & filters
   const camsEl = $('#cams');
-  function selectCam(ch) {
-    const changed = ch !== S.cam;
-    S.cam = ch;
-    camsEl.querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', b.dataset.cam === String(ch)));
-    if (changed) rebuild();
-    if (ch === 'all') showGrid(); else goLive(ch);
-  }
-  camsEl.addEventListener('click', (e) => { const b = e.target.closest('[data-cam]'); if (b) selectCam(b.dataset.cam === 'all' ? 'all' : +b.dataset.cam); });
-  grid.addEventListener('click', (e) => { const t = e.target.closest('[data-cam]'); if (t) selectCam(+t.dataset.cam); });
+  // Camera chips toggle (All clears): they filter the list. The player follows: one camera is live, more is a grid.
+  camsEl.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cam]'); if (!b) return;
+    const ch = b.dataset.cam === 'all' ? null : +b.dataset.cam;
+    if (ch === null) S.pick.clear(); else S.pick.has(ch) ? S.pick.delete(ch) : S.pick.add(ch);
+    camsEl.querySelectorAll('.chip').forEach((x) => x.setAttribute('aria-pressed', x.dataset.cam === 'all' ? !S.pick.size : S.pick.has(+x.dataset.cam)));
+    rebuild();
+    S.pick.size === 1 ? goLive([...S.pick][0]) : showGrid();
+  });
+  grid.addEventListener('click', (e) => { const t = e.target.closest('[data-cam]'); if (t) goLive(+t.dataset.cam); }); // keeps the picks
   $('#filters').addEventListener('click', (e) => {
     const b = e.target.closest('[data-tag]'); if (!b) return;
     const t = b.dataset.tag;
