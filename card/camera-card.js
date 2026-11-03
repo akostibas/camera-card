@@ -24,14 +24,14 @@ const FILLED = new Set(['play', 'pause', 'prev', 'next']);
 const svg = (k, cls = '') => `<svg class="${FILLED.has(k) ? 'f ' : ''}${cls}" viewBox="0 0 24 24">${I[k]}</svg>`;
 
 const STYLE = `
-:host{display:block;--pg:var(--primary-background-color,#000);--cell:var(--secondary-background-color,#1c1c1e);--cell2:var(--divider-color,#2c2c2e);--sep:var(--divider-color,#38383a);--txt:var(--primary-text-color,#f2f2f7);--mut:var(--secondary-text-color,#8e8e93);--acc:var(--primary-color,#0a84ff);--red:#ff453a}
+:host{display:block;--pg:var(--ha-card-background,var(--card-background-color,#1c1c1e));--cell:color-mix(in srgb,var(--txt) 8%,transparent);--cell2:color-mix(in srgb,var(--txt) 15%,transparent);--sep:var(--divider-color,#38383a);--txt:var(--primary-text-color,#f2f2f7);--mut:var(--secondary-text-color,#8e8e93);--acc:var(--primary-color,#0a84ff);--red:#ff453a}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 button:disabled{opacity:.3;cursor:default}
 svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
 svg.f{fill:currentColor;stroke:none}
-#app{position:relative;height:calc(100dvh - var(--header-height,56px) - env(safe-area-inset-top,0px));max-width:600px;margin:0 auto;display:flex;flex-direction:column;overflow:hidden;background:var(--pg);color:var(--txt);font:15px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+#app{position:relative;height:calc(100dvh - var(--header-height,56px) - env(safe-area-inset-top,0px));max-width:600px;margin:0 auto;border-radius:var(--ha-card-border-radius,12px);border:var(--ha-card-border-width,1px) solid var(--ha-card-border-color,var(--divider-color,#0002));box-shadow:var(--ha-card-box-shadow,none);display:flex;flex-direction:column;overflow:hidden;background:var(--pg);color:var(--txt);font:15px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 #player{height:min(84vw,506px,45%);flex:none;display:flex;flex-direction:column;background:#000}
 #grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:2px;height:100%}
 .tile{position:relative;overflow:hidden;text-align:left;background:var(--cell)}
@@ -209,11 +209,15 @@ function mount(host, config) {
     const out = [], last = {};
     for (const c of slices) {
       const e = last[c.cam], f = c.id.split('|');
+      if (e && len(c) < 10 && c.start <= e.end + 2000) continue; // a seconds-long stub at a file change: part of e
       if (e && c.start - e.end <= 2000 && f[4] === e.file && c.untagged === e.untagged && c.tags.join() === e.tags.join()) {
         if (c.end > e.end) { e.end = c.end; e.id = e.id.replace(/[^|]+$/, f[6]); }
-      } else out.push(last[c.cam] = { ...c, file: f[4], key: `${c.cam}:${c.start}` });
+      } else {
+        if (e && e.end - e.start < 10000 && c.start <= e.end + 2000) e.drop = true; // ... or just before it
+        out.push(last[c.cam] = { ...c, file: f[4], key: `${c.cam}:${c.start}` });
+      }
     }
-    return out;
+    return out.filter((e) => !e.drop);
   }
   // Short clips on one camera less than a minute apart collapse into one burst row.
   function dayUnits(i) {
