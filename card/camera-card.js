@@ -43,6 +43,7 @@ svg.f{fill:currentColor;stroke:none}
 #video{position:relative;flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;background:#000}
 #video video,#video #live,#video #liveimg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #bfull{position:absolute;z-index:1;right:4px;bottom:4px;width:40px;height:40px;display:grid;place-items:center;color:#fff;filter:drop-shadow(0 1px 2px #000)}
+#video.max{position:fixed;inset:0;z-index:20}
 #cap{position:relative;max-width:84%;text-align:center;font-size:15px;color:var(--mut)}
 .vtop{position:absolute;z-index:1;color:#fff;left:10px;right:10px;top:8px;display:flex;justify-content:space-between;gap:8px;white-space:nowrap;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none}
 #vcam{min-width:0;overflow:hidden;text-overflow:ellipsis}
@@ -472,8 +473,8 @@ function mount(host, config) {
     try {
       const { url } = await api('reolink/play?id=' + encodeURIComponent(c.id));
       if (my !== S.playSeq) return;
-      // iPhone can open a still-downloading clip at its newest part, ignoring the playlist's start.
-      vid.addEventListener('loadedmetadata', () => { if (vid.currentTime > 0.5) vid.currentTime = 0; }, { once: true });
+      // iPhone opens a still-downloading clip near its newest part, ignoring the playlist's start.
+      vid.addEventListener('playing', () => { if (my === S.playSeq && vid.currentTime > 1) vid.currentTime = vid.seekable.length ? vid.seekable.start(0) : 0; }, { once: true });
       vid.src = url;
       vid.playbackRate = S.speed;
       await vid.play();
@@ -518,18 +519,20 @@ function mount(host, config) {
   seekEl.addEventListener('change', () => { S.seeking = false; });
   $('#video').addEventListener('click', () => $('#bplay').click());
   $('#bfull').innerHTML = svg('full');
-  // iPhone has no element fullscreen, only the native player for a <video>: no live view there.
-  const fsTarget = () => S.view.mode === 'clip' ? vid : $('#video').requestFullscreen && $('#video');
+  // iPhone fullscreens only a <video> (its own player): live view instead covers the page.
   $('#bfull').onclick = (e) => {
     e.stopPropagation();
-    const el = fsTarget();
-    el.requestFullscreen ? el.requestFullscreen() : el.webkitEnterFullscreen();
+    const el = S.view.mode === 'clip' ? vid : $('#video');
+    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    else if (el === vid) vid.webkitEnterFullscreen();
+    else el.classList.toggle('max');
   };
 
   const setText = (el, s) => { if (el.textContent !== s) el.textContent = s; };
   function draw() {
     const v = S.view;
     grid.hidden = v.mode !== 'grid'; single.hidden = v.mode === 'grid';
+    if (v.mode !== 'live') $('#video').classList.remove('max');
     if (v.mode === 'grid') return drawGrid();
     const isClip = v.mode === 'clip', c = v.clip, ch = isClip ? c.cam : v.cam;
     vid.hidden = !isClip;
@@ -540,7 +543,6 @@ function mount(host, config) {
     $('#vbadge').className = isClip ? '' : 'badge';
     setText($('#vbadge'), isClip ? hms(c.start + v.t * 1000) : 'LIVE');
     $('#bspeed').hidden = $('#blive').hidden = !isClip;
-    $('#bfull').hidden = !fsTarget();
     $('#bgrid').hidden = isClip || S.cam !== 'all';
     setText($('#bspeed'), S.speed + '×');
     const L = isClip ? len(c) : 1;
