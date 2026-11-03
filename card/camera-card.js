@@ -41,19 +41,17 @@ svg.f{fill:currentColor;stroke:none}
 #video{position:relative;flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;background:#000}
 #video video,#video #live,#video #liveimg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #cap{position:relative;max-width:84%;text-align:center;font-size:15px;color:var(--mut)}
-.vtop{position:absolute;z-index:1;left:10px;right:10px;top:8px;display:flex;justify-content:space-between;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none}
+.vtop{position:absolute;z-index:1;left:10px;right:10px;top:8px;display:flex;justify-content:space-between;gap:8px;white-space:nowrap;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none}
+#vcam{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .badge{background:var(--red);border-radius:4px;padding:1px 6px;font-size:11px;letter-spacing:.04em}
-#ctl{flex:none;gap:2px;display:flex;flex-direction:column;justify-content:space-between;padding:6px 12px 4px;background:var(--cell)}
-.r1{display:flex;align-items:center;gap:6px;min-height:30px}
-#info{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
-#info span{color:var(--mut);margin-left:6px}
+#ctl{flex:none;display:flex;flex-direction:column;padding:2px 10px 4px;background:var(--cell)}
 .pill{height:30px;min-width:44px;padding:0 10px;border-radius:15px;background:var(--cell2);font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px}
 .pill.red{background:var(--red);color:#fff}
 .r2{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}
 .r2 span{min-width:44px}.r2 span:last-child{text-align:right}
 #seek{flex:1;height:24px;accent-color:var(--txt);margin:0}
-.r3{display:flex;justify-content:space-around;align-items:center}
-.r3 button{width:52px;height:40px;display:grid;place-items:center;border-radius:20px;font-size:13px;font-weight:600}
+.r3{display:flex;align-items:center;gap:2px}.r3 .sp{flex:1}
+.r3 button:not(.pill){width:46px;height:36px;display:grid;place-items:center;border-radius:20px;font-size:13px;font-weight:600}
 .r3 button:active,.pill:active,.row:active{background:var(--cell2)}
 #bplay svg{width:28px;height:28px}
 .chips{flex:none;display:flex;gap:5px;padding:6px 10px;overflow-x:auto;scrollbar-width:none}
@@ -114,12 +112,6 @@ const HTML = `
         <div id="cap"></div>
       </div>
       <div id="ctl">
-        <div class="r1">
-          <div id="info"></div>
-          <button class="pill" id="bspeed" aria-label="Playback speed">1×</button>
-          <button class="pill red" id="blive" aria-label="Go live">Live</button>
-          <button class="pill" id="bgrid" aria-label="All cameras"></button>
-        </div>
         <div class="r2"><span id="tel"></span><input type="range" id="seek" aria-label="Seek" min="0" step="0.1"><span id="ttot"></span></div>
         <div class="r3">
           <button id="bprev" aria-label="Previous clip"></button>
@@ -127,6 +119,10 @@ const HTML = `
           <button id="bplay" aria-label="Play/pause"></button>
           <button id="bfwd" aria-label="Skip forward"></button>
           <button id="bnext" aria-label="Next clip"></button>
+          <span class="sp"></span>
+          <button class="pill" id="bspeed" aria-label="Playback speed">1×</button>
+          <button class="pill red" id="blive" aria-label="Go live">Live</button>
+          <button class="pill" id="bgrid" aria-label="All cameras"></button>
         </div>
       </div>
     </div>
@@ -483,10 +479,9 @@ function mount(host, config) {
     liveImg.hidden = isClip;
     if (!isClip && liveImg.dataset.cam !== String(ch)) { liveImg.dataset.cam = ch; liveImg.removeAttribute('src'); delete liveImg.dataset.busy; loadPic(liveImg, picture(ch)); }
     setText($('#cap'), isClip ? (v.status || '') : picture(ch) ? '' : 'No live view for this camera');
-    setText($('#vcam'), cam[ch].name);
+    setText($('#vcam'), isClip ? `${cam[ch].name} · ${kind(c.tags)} · ${when(c.start)}` : cam[ch].name);
     $('#vbadge').className = isClip ? '' : 'badge';
     setText($('#vbadge'), isClip ? hms(c.start + v.t * 1000) : 'LIVE');
-    $('#info').innerHTML = isClip ? `<b>${kind(c.tags, c.untagged)}</b><span>${when(c.start)}</span>` : `<b>${esc(cam[ch].name)}</b><span>Live</span>`;
     $('#bspeed').hidden = $('#blive').hidden = !isClip;
     $('#bgrid').hidden = isClip || S.cam !== 'all';
     setText($('#bspeed'), S.speed + '×');
