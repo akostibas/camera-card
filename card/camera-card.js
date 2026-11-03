@@ -18,6 +18,7 @@ const I = {
   chev: '<path d="M9 6l6 6-6 6"/>',
   doorbell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   unknown: '<circle cx="12" cy="12" r="8"/><path d="M9.8 9.5a2.3 2.3 0 1 1 3.2 2.1c-.6.3-1 .8-1 1.4v.5M12 16.5v.01"/>',
 };
 const FILLED = new Set(['play', 'pause', 'prev', 'next']);
@@ -41,6 +42,7 @@ svg.f{fill:currentColor;stroke:none}
 #single{display:flex;flex-direction:column;height:100%}
 #video{position:relative;flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;background:#000}
 #video video,#video #live,#video #liveimg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+#bfull{position:absolute;z-index:1;right:4px;bottom:4px;width:40px;height:40px;display:grid;place-items:center;color:#fff;filter:drop-shadow(0 1px 2px #000)}
 #cap{position:relative;max-width:84%;text-align:center;font-size:15px;color:var(--mut)}
 .vtop{position:absolute;z-index:1;color:#fff;left:10px;right:10px;top:8px;display:flex;justify-content:space-between;gap:8px;white-space:nowrap;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none}
 #vcam{min-width:0;overflow:hidden;text-overflow:ellipsis}
@@ -111,6 +113,7 @@ const HTML = `
         <video id="vid" playsinline muted hidden></video>
         <img id="liveimg" alt="" hidden>
         <div id="cap"></div>
+        <button id="bfull" aria-label="Full screen"></button>
       </div>
       <div id="ctl">
         <div class="r2"><span id="tel"></span><input type="range" id="seek" aria-label="Seek" min="0" step="0.1"><span id="ttot"></span></div>
@@ -179,7 +182,7 @@ function mount(host, config) {
   root.innerHTML = `<style>${STYLE}</style>${HTML}`;
   const $ = (s) => root.querySelector(s);
   const api = (path) => Promise.race([host.hass.callApi('GET', path), new Promise((_, no) => setTimeout(() => no(new Error('timed out')), 15000))]);
-  const S = { cams: [], recs: new Map(), byId: new Map(), hiddenSched: [], loaded: -1, oldest: 0, sched: false, cam: 'all', tag: '', view: { mode: 'grid' }, speed: 1, all: [], next: 0, quiet: null, open: new Set(), seeking: false, playSeq: 0, gen: 0 };
+  const S = { cams: [], recs: new Map(), byId: new Map(), hiddenSched: [], loaded: -1, oldest: 0, sched: false, cam: 'all', tags: new Set(), view: { mode: 'grid' }, speed: 1, all: [], next: 0, quiet: null, open: new Set(), seeking: false, playSeq: 0, gen: 0 };
   const cam = {};
   const camDot = (ch) => PALETTE[S.cams.findIndex((c) => c.ch === ch) % PALETTE.length];
 
@@ -201,8 +204,8 @@ function mount(host, config) {
     const events = merge([...S.recs.values()].filter((c) => ids.has(c.cam)).sort((a, b) => a.start - b.start));
     S.byId = new Map(events.map((e) => [e.key, e]));
     const plain = (e) => e.sched && !e.tags.length;
-    S.hiddenSched = !S.tag && !S.sched ? events.filter(plain) : [];
-    S.all = events.filter((e) => S.tag ? e.tags.includes(S.tag) : S.sched || !plain(e));
+    S.hiddenSched = !S.tags.size && !S.sched ? events.filter(plain) : [];
+    S.all = events.filter((e) => S.tags.size ? e.tags.some((t) => S.tags.has(t)) : S.sched || !plain(e));
   }
   // The integration hands out recordings in 5-minute slices; the NVR's own files are what count.
   // A motion file is one event: merge its slices and their tags. An always-save file (about an hour,
@@ -313,7 +316,7 @@ function mount(host, config) {
     const el = document.createElement('section');
     el.dataset.day = i;
     const n = d.inDay.length, hid = hiddenOn(i);
-    const untg = !S.tag && (hid || S.sched) ? `<button class="untg" data-untagged>${S.sched ? 'Hide scheduled recordings' : `+ ${hid} scheduled`}</button>` : '';
+    const untg = !S.tags.size && (hid || S.sched) ? `<button class="untg" data-untagged>${S.sched ? 'Hide scheduled recordings' : `+ ${hid} scheduled`}</button>` : '';
     el.innerHTML = `<div class="dh"><div class="tt">${dayName(i)}<span>${n ? `${n} clip${n > 1 ? 's' : ''}` : i ? 'No clips' : 'No activity yet'}</span></div>${ribbonHTML(d, i)}${untg}</div>`
       + d.units.map((u) => u.length > 1 ? burstHTML(u) : rowHTML(u[0])).join('');
     el.querySelectorAll('[data-still]').forEach((s) => stillIO.observe(s));
@@ -324,7 +327,7 @@ function mount(host, config) {
     const q = S.quiet, el = document.createElement('div');
     el.className = 'quiet'; el.dataset.from = q.from; el.dataset.to = q.to;
     const nm = (i) => new Date(dayStart(i)).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    el.textContent = `Nothing ${S.tag ? 'matching ' : ''}${q.from === q.to ? 'on ' + nm(q.from) : `from ${nm(q.to)} to ${nm(q.from)}`}`;
+    el.textContent = `Nothing ${S.tags.size ? 'matching ' : ''}${q.from === q.to ? 'on ' + nm(q.from) : `from ${nm(q.to)} to ${nm(q.from)}`}`;
     if (q.untg) { const b = document.createElement('button'); b.className = 'untg'; b.dataset.untagged = ''; b.dataset.day = q.from; b.textContent = `+ ${q.untg} scheduled`; el.append(document.createElement('br'), b); }
     feed.insertBefore(el, more); S.quiet = null;
   }
@@ -504,6 +507,14 @@ function mount(host, config) {
   seekEl.addEventListener('input', () => { S.seeking = true; seek(+seekEl.value); });
   seekEl.addEventListener('change', () => { S.seeking = false; });
   $('#video').addEventListener('click', () => $('#bplay').click());
+  $('#bfull').innerHTML = svg('full');
+  // iPhone has no element fullscreen, only the native player for a <video>: no live view there.
+  const fsTarget = () => S.view.mode === 'clip' ? vid : $('#video').requestFullscreen && $('#video');
+  $('#bfull').onclick = (e) => {
+    e.stopPropagation();
+    const el = fsTarget();
+    el.requestFullscreen ? el.requestFullscreen() : el.webkitEnterFullscreen();
+  };
 
   const setText = (el, s) => { if (el.textContent !== s) el.textContent = s; };
   function draw() {
@@ -519,6 +530,7 @@ function mount(host, config) {
     $('#vbadge').className = isClip ? '' : 'badge';
     setText($('#vbadge'), isClip ? hms(c.start + v.t * 1000) : 'LIVE');
     $('#bspeed').hidden = $('#blive').hidden = !isClip;
+    $('#bfull').hidden = !fsTarget();
     $('#bgrid').hidden = isClip || S.cam !== 'all';
     setText($('#bspeed'), S.speed + '×');
     const L = isClip ? len(c) : 1;
@@ -562,8 +574,9 @@ function mount(host, config) {
   grid.addEventListener('click', (e) => { const t = e.target.closest('[data-cam]'); if (t) selectCam(+t.dataset.cam); });
   $('#filters').addEventListener('click', (e) => {
     const b = e.target.closest('[data-tag]'); if (!b) return;
-    S.tag = b.dataset.tag;
-    $('#filters').querySelectorAll('[data-tag]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+    const t = b.dataset.tag;
+    if (!t) S.tags.clear(); else S.tags.has(t) ? S.tags.delete(t) : S.tags.add(t);
+    $('#filters').querySelectorAll('[data-tag]').forEach((x) => x.setAttribute('aria-pressed', x.dataset.tag ? S.tags.has(x.dataset.tag) : !S.tags.size));
     rebuild();
   });
   const dateEl = $('#date'), bdate = $('#bdate');
