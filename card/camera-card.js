@@ -41,10 +41,10 @@ svg.f{fill:currentColor;stroke:none}
 .tile .lv{position:absolute;right:6px;top:6px;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:#fffc;background:#0006;border-radius:3px;padding:1px 4px}
 #single{display:flex;flex-direction:column;height:100%}
 #video{position:relative;flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;background:#000}
-#live ha-camera-stream{display:block;width:100%;height:100%}
+#live{--video-max-height:100%}#live ha-camera-stream{display:block;width:100%;height:100%}
 #video video,#video #live,#video #liveimg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
-#bfull{position:absolute;z-index:1;right:4px;bottom:4px;width:40px;height:40px;display:grid;place-items:center;color:#fff;filter:drop-shadow(0 1px 2px #000)}
 #video.max{position:fixed;inset:0;z-index:20}
+@media (orientation:landscape) and (max-height:500px) and (pointer:coarse){#video{position:fixed;inset:0;z-index:20}}
 #cap{position:relative;max-width:84%;text-align:center;font-size:15px;color:var(--mut)}
 .vtop{position:absolute;z-index:1;color:#fff;left:10px;right:10px;top:8px;display:flex;justify-content:space-between;gap:8px;white-space:nowrap;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none}
 #vcam{min-width:0;overflow:hidden;text-overflow:ellipsis}
@@ -56,7 +56,7 @@ svg.f{fill:currentColor;stroke:none}
 .r2 span{min-width:44px}.r2 span:last-child{text-align:right}
 #seek{flex:1;height:24px;accent-color:var(--txt);margin:0}
 .r3{display:flex;align-items:center;gap:2px}.r3 .sp{flex:1}
-.r3 button:not(.pill){width:46px;height:36px;display:grid;place-items:center;border-radius:20px;font-size:13px;font-weight:600}
+.r3 button:not(.pill){flex:0 1 46px;min-width:34px;height:36px;display:grid;place-items:center;border-radius:20px;font-size:13px;font-weight:600}
 .r3 button:active,.pill:active,.row:active{background:var(--cell2)}
 #bplay svg{width:28px;height:28px}
 .chips{flex:none;display:flex;gap:5px;padding:6px 10px;overflow-x:auto;scrollbar-width:none}
@@ -116,7 +116,6 @@ const HTML = `
         <img id="liveimg" alt="" hidden>
         <div id="live"></div>
         <div id="cap"></div>
-        <button id="bfull" aria-label="Full screen"></button>
       </div>
       <div id="ctl">
         <div class="r2"><span id="tel"></span><input type="range" id="seek" aria-label="Seek" min="0" step="0.1"><span id="ttot"></span></div>
@@ -130,6 +129,7 @@ const HTML = `
           <button class="pill" id="bspeed" aria-label="Playback speed">1×</button>
           <button class="pill red" id="blive" aria-label="Go live">Live</button>
           <button class="pill" id="bgrid" aria-label="All cameras"></button>
+          <button id="bfull" aria-label="Full screen"></button>
         </div>
       </div>
     </div>
@@ -519,15 +519,16 @@ function mount(host, config) {
   $('#bspeed').onclick = () => { S.speed = { 1: 2, 2: 4, 4: 1 }[S.speed]; vid.playbackRate = S.speed; draw(); };
   seekEl.addEventListener('input', () => { S.seeking = true; seek(+seekEl.value); });
   seekEl.addEventListener('change', () => { S.seeking = false; });
-  $('#video').addEventListener('click', () => $('#bplay').click());
+  $('#video').addEventListener('click', () => S.view.mode === 'live' ? $('#video').classList.remove('max') : $('#bplay').click());
   $('#bfull').innerHTML = svg('full');
-  // iPhone fullscreens only a <video> (its own player): live view instead covers the page.
-  $('#bfull').onclick = (e) => {
-    e.stopPropagation();
-    const el = S.view.mode === 'clip' ? vid : $('#video');
+  // The live <video> sits inside HA's player, behind open shadow roots.
+  const streamVideo = (n = liveBox) => { for (const c of [...(n.shadowRoot?.children || []), ...n.children]) { if (c.tagName === 'VIDEO' && c.readyState >= 2) return c; const v = streamVideo(c); if (v) return v; } };
+  // iPhone fullscreens only a <video>, in its own player: a live view still on snapshots covers the page.
+  $('#bfull').onclick = () => {
+    const el = S.view.mode === 'clip' ? vid : $('#video'), sv = S.view.mode === 'live' && streamVideo();
     if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
-    else if (el === vid) vid.webkitEnterFullscreen();
-    else el.classList.toggle('max');
+    else if (el === vid || sv) (sv || vid).webkitEnterFullscreen();
+    else el.classList.add('max');
   };
 
   const setText = (el, s) => { if (el.textContent !== s) el.textContent = s; };
