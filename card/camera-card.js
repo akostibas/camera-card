@@ -17,33 +17,34 @@ const I = {
   grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
   chev: '<path d="M9 6l6 6-6 6"/>',
   doorbell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   unknown: '<circle cx="12" cy="12" r="8"/><path d="M9.8 9.5a2.3 2.3 0 1 1 3.2 2.1c-.6.3-1 .8-1 1.4v.5M12 16.5v.01"/>',
 };
 const FILLED = new Set(['play', 'pause', 'prev', 'next']);
 const svg = (k, cls = '') => `<svg class="${FILLED.has(k) ? 'f ' : ''}${cls}" viewBox="0 0 24 24">${I[k]}</svg>`;
 
 const STYLE = `
-:host{display:block;--bg:#000;--cell:#1c1c1e;--cell2:#2c2c2e;--sep:#38383a;--txt:#f2f2f7;--mut:#8e8e93;--acc:#0a84ff;--red:#ff453a}
+:host{display:block;--pg:var(--primary-background-color,#000);--cell:var(--card-background-color,#1c1c1e);--cell2:var(--secondary-background-color,#2c2c2e);--sep:var(--divider-color,#38383a);--txt:var(--primary-text-color,#f2f2f7);--mut:var(--secondary-text-color,#8e8e93);--acc:var(--primary-color,#0a84ff);--red:#ff453a}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 button:disabled{opacity:.3;cursor:default}
 svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
 svg.f{fill:currentColor;stroke:none}
-#app{position:relative;height:calc(100dvh - var(--header-height,56px) - env(safe-area-inset-top,0px));max-width:600px;margin:0 auto;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);color:var(--txt);font:15px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+#app{position:relative;height:calc(100dvh - var(--header-height,56px) - env(safe-area-inset-top,0px));max-width:600px;margin:0 auto;display:flex;flex-direction:column;overflow:hidden;color:var(--txt);font:15px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 #player{height:min(84vw,506px,45%);flex:none;display:flex;flex-direction:column;background:#000}
 #grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:2px;height:100%}
 .tile{position:relative;overflow:hidden;text-align:left;background:var(--cell)}
 .tile img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.tile .nm{position:absolute;left:8px;top:6px;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000}
+.tile .nm{position:absolute;left:8px;top:6px;font-size:12px;font-weight:600;color:#fff;text-shadow:0 1px 2px #000}
 .tile .lv{position:absolute;right:6px;top:6px;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:#fffc;background:#0006;border-radius:3px;padding:1px 4px}
 #single{display:flex;flex-direction:column;height:100%}
 #video{position:relative;flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;background:#000}
 #video video,#video #live,#video #liveimg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #cap{position:relative;max-width:84%;text-align:center;font-size:15px;color:var(--mut)}
-.vtop{position:absolute;z-index:1;left:10px;right:10px;top:8px;display:flex;justify-content:space-between;gap:8px;white-space:nowrap;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none}
+.vtop{position:absolute;z-index:1;color:#fff;left:10px;right:10px;top:8px;display:flex;justify-content:space-between;gap:8px;white-space:nowrap;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none}
 #vcam{min-width:0;overflow:hidden;text-overflow:ellipsis}
-.badge{background:var(--red);border-radius:4px;padding:1px 6px;font-size:11px;letter-spacing:.04em}
+.badge{color:#fff;background:var(--red);border-radius:4px;padding:1px 6px;font-size:11px;letter-spacing:.04em}
 #ctl{flex:none;display:flex;flex-direction:column;padding:2px 10px 4px;background:var(--cell)}
 .pill{height:30px;min-width:44px;padding:0 10px;border-radius:15px;background:var(--cell2);font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px}
 .pill.red{background:var(--red);color:#fff}
@@ -57,7 +58,7 @@ svg.f{fill:currentColor;stroke:none}
 .chips{flex:none;display:flex;gap:5px;padding:6px 10px;overflow-x:auto;scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}
 .chip{flex:none;height:30px;padding:0 8px;border-radius:15px;background:var(--cell);font-size:12px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
-.chip[aria-pressed=true]{background:var(--txt);color:#000;font-weight:600}
+.chip[aria-pressed=true]{background:var(--txt);color:var(--cell);font-weight:600}
 .cd{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
 #filters{padding-top:0;border-bottom:.5px solid var(--sep)}
 #filters .sp{flex:1;min-width:0}
@@ -67,22 +68,22 @@ svg.f{fill:currentColor;stroke:none}
 #bdate{position:relative}
 #date{position:absolute;inset:0;opacity:0;width:100%}
 #feed{flex:1;overflow-y:auto;overflow-anchor:none;overscroll-behavior:contain;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
-.dh{position:sticky;top:0;z-index:2;background:#000;padding:8px 16px 6px}
+.dh{position:sticky;top:0;z-index:2;background:var(--pg);padding:8px 16px 6px}
 .dh .tt{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:16px}
 .dh .tt span{font-weight:400;font-size:12px;color:var(--mut)}
 .rib{position:relative;height:16px;margin-top:6px;border-radius:3px;background:var(--cell);overflow:hidden;cursor:pointer}
 .rib i{position:absolute;top:0;bottom:0;min-width:2px;border-radius:1px}
-.rib .fut{position:absolute;top:0;bottom:0;right:0;background:repeating-linear-gradient(135deg,#0000 0 3px,#ffffff10 3px 5px)}
+.rib .fut{position:absolute;top:0;bottom:0;right:0;opacity:.5;background:repeating-linear-gradient(135deg,transparent 0 3px,var(--sep) 3px 5px)}
 .hl{display:flex;justify-content:space-between;font-size:10px;color:var(--mut);margin-top:2px}
 .row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:7px 16px;min-height:56px}
 .row.on{background:#0a84ff26;box-shadow:inset 3px 0 var(--acc)}
 .row.flash{animation:fl 1.2s}
-@keyframes fl{0%,40%{background:#ffffff20}}
+@keyframes fl{0%,40%{background:var(--cell2)}}
 .sw{position:relative;width:71px;height:40px;border-radius:6px;flex:none;overflow:hidden;background:var(--cell)}
 .sw img{width:100%;height:100%;object-fit:cover;display:block}
-.sw.stack{overflow:visible;box-shadow:4px -4px 0 -1px #ffffff30,8px -8px 0 -2px #ffffff18;margin-right:6px}
+.sw.stack{overflow:visible;box-shadow:4px -4px 0 -1px var(--sep),8px -8px 0 -2px var(--cell2);margin-right:6px}
 .sw.stack img{border-radius:6px}
-.sw b{position:absolute;right:3px;bottom:2px;font-size:10px;font-weight:600;background:#0009;border-radius:3px;padding:0 3px;font-variant-numeric:tabular-nums}
+.sw b{color:#fff;position:absolute;right:3px;bottom:2px;font-size:10px;font-weight:600;background:#0009;border-radius:3px;padding:0 3px;font-variant-numeric:tabular-nums}
 .tx{flex:1;min-width:0}
 .t1{display:flex;align-items:center;gap:5px;font-weight:600;font-size:15px}
 .t1 svg{width:15px;height:15px;color:var(--mut)}
@@ -90,13 +91,13 @@ svg.f{fill:currentColor;stroke:none}
 .t2{font-size:13px;color:var(--mut);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chev{color:var(--mut);transition:transform .2s}
 .burst.open .chev{transform:rotate(90deg)}
-.kids{background:#0d0d0e}
+.kids{background:var(--cell2)}
 .kids .row{padding-left:28px;min-height:48px}
 .kids .sw{width:59px;height:33px}
 .untg{margin-top:6px;font-size:12.5px;color:var(--acc);padding:4px 0}
 .quiet{padding:10px 16px;font-size:13px;color:var(--mut);text-align:center;border-top:.5px solid var(--sep);border-bottom:.5px solid var(--sep);margin:6px 0}
 .end{padding:20px;text-align:center;font-size:12px;color:var(--mut)}
-#toast{position:absolute;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);opacity:0;transition:.25s;background:#2c2c2ef2;padding:10px 16px;border-radius:14px;font-size:14px;white-space:nowrap;pointer-events:none;z-index:9}
+#toast{position:absolute;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);opacity:0;transition:.25s;background:#2c2c2ef2;color:#fff;padding:10px 16px;border-radius:14px;font-size:14px;white-space:nowrap;pointer-events:none;z-index:9}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 `;
 
@@ -157,8 +158,8 @@ const short = (s) => s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s /
 const len = (c) => (c.end - c.start) / 1000;
 const KN = { doorbell: 'Rang the bell', person: 'Person', vehicle: 'Vehicle', animal: 'Animal' };
 const ordered = (tags) => ['doorbell', 'person', 'vehicle', 'animal'].filter((t) => tags.includes(t));
-const kind = (tags) => tags.length ? ordered(tags).map((t) => KN[t]).join(' · ') : 'Motion';
-const icons = (c) => c.tags.length ? ordered(c.tags).map((t) => svg(t)).join('') : svg('motion');
+const kind = (tags, sched) => tags.length ? ordered(tags).map((t) => KN[t]).join(' · ') : sched ? 'Scheduled' : 'Motion';
+const icons = (c) => !c.tags.length && c.untagged ? svg('clock') : c.tags.length ? ordered(c.tags).map((t) => svg(t)).join('') : svg('motion');
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 class CameraCard extends HTMLElement {
@@ -178,12 +179,12 @@ function mount(host, config) {
   root.innerHTML = `<style>${STYLE}</style>${HTML}`;
   const $ = (s) => root.querySelector(s);
   const api = (path) => Promise.race([host.hass.callApi('GET', path), new Promise((_, no) => setTimeout(() => no(new Error('timed out')), 15000))]);
-  const S = { cams: [], recs: new Map(), loaded: -1, oldest: 0, untagged: false, cam: 'all', tag: '', view: { mode: 'grid' }, speed: 1, all: [], next: 0, quiet: null, open: new Set(), seeking: false, playSeq: 0, gen: 0 };
+  const S = { cams: [], recs: new Map(), byId: new Map(), hiddenSched: [], loaded: -1, oldest: 0, sched: false, cam: 'all', tag: '', view: { mode: 'grid' }, speed: 1, all: [], next: 0, quiet: null, open: new Set(), seeking: false, playSeq: 0, gen: 0 };
   const cam = {};
   const camDot = (ch) => PALETTE[S.cams.findIndex((c) => c.ch === ch) % PALETTE.length];
 
   // ---- data
-  const toRec = (r) => ({ id: r.id, cam: r.ch, start: Date.parse(r.start), end: Date.parse(r.end), tags: r.tags, untagged: r.untagged });
+  const toRec = (r) => ({ id: r.id, cam: r.ch, start: Date.parse(r.start), end: Date.parse(r.end), tags: [...r.tags].sort(), untagged: r.untagged });
   async function fetchDays(newest, oldest) { // day indexes, inclusive
     const j = await api(`reolink/recordings?from=${iso(dayStart(oldest))}&to=${iso(dayStart(newest))}`);
     return j;
@@ -197,9 +198,22 @@ function mount(host, config) {
   }
   function filter() {
     const ids = new Set(S.cam === 'all' ? S.cams.map((c) => c.ch) : [S.cam]);
-    const mine = [...S.recs.values()].filter((c) => ids.has(c.cam));
-    S.hiddenUntagged = S.tag && !S.untagged ? mine.filter((c) => c.untagged) : [];
-    S.all = mine.filter((c) => !S.tag || c.tags.includes(S.tag) || (S.untagged && c.untagged)).sort((a, b) => a.start - b.start);
+    const events = merge([...S.recs.values()].filter((c) => ids.has(c.cam)).sort((a, b) => a.start - b.start));
+    S.byId = new Map(events.map((e) => [e.id, e]));
+    S.hiddenSched = !S.tag && !S.sched ? events.filter((e) => e.untagged) : [];
+    S.all = events.filter((e) => S.tag ? e.tags.includes(S.tag) : S.sched || !e.untagged);
+  }
+  // The integration hands out recordings in 5-minute slices. Slices that follow on with no gap, on
+  // one camera, from one NVR file, with the same tags, are one event: play them as one cut.
+  function merge(slices) {
+    const out = [], last = {};
+    for (const c of slices) {
+      const e = last[c.cam], f = c.id.split('|');
+      if (e && c.start - e.end <= 2000 && f[4] === e.file && c.untagged === e.untagged && c.tags.join() === e.tags.join()) {
+        e.end = Math.max(e.end, c.end); e.parts[6] = f[6]; e.id = e.parts.join('|'); e.n++;
+      } else out.push(last[c.cam] = { ...c, file: f[4], parts: f, n: 1 });
+    }
+    return out;
   }
   // Short clips on one camera less than a minute apart collapse into one burst row.
   function dayUnits(i) {
@@ -255,7 +269,7 @@ function mount(host, config) {
   const stillHTML = (c, badge, cls = '') => `<span class="sw ${cls}" data-still="${stillKey(c)}"><b>${badge}</b></span>`;
   function rowHTML(c) {
     const camName = S.cam === 'all' ? `<span class="cn"><span class="cd" style="background:${camDot(c.cam)}"></span>${esc(cam[c.cam].short)}</span>` : '';
-    const sub = len(c) > 3600 ? `${hm(c.start)} → ${when(c.end)}` : [hm(c.start), ago(c.start)].filter(Boolean).join(' · ');
+    const sub = [len(c) >= 300 ? `${hm(c.start)}–${hm(c.end)}` : hm(c.start), ago(c.start)].filter(Boolean).join(' · ');
     return `<button class="row" data-play="${esc(c.id)}" data-t="${c.start}" aria-label="${kind(c.tags, c.untagged)} ${esc(cam[c.cam].name)} ${hm(c.start)}">
       ${stillHTML(c, short(len(c)))}
       <span class="tx"><span class="t1">${icons(c)}${kind(c.tags, c.untagged)}${camName}</span><span class="t2">${sub}</span></span></button>`;
@@ -280,12 +294,12 @@ function mount(host, config) {
     const fut = i === 0 ? `<span class="fut" style="left:${(Date.now() - d.a) / DAYMS * 100}%"></span>` : '';
     return `<div class="rib" data-a="${d.a}" aria-label="Day timeline">${bars}${fut}</div><div class="hl"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>`;
   }
-  const hiddenOn = (i) => S.hiddenUntagged.filter((c) => c.start >= dayStart(i) && c.start < dayStart(i - 1)).length;
+  const hiddenOn = (i) => S.hiddenSched.filter((c) => c.start >= dayStart(i) && c.start < dayStart(i - 1)).length;
   function daySection(i, d = dayUnits(i)) {
     const el = document.createElement('section');
     el.dataset.day = i;
     const n = d.inDay.length, hid = hiddenOn(i);
-    const untg = S.tag && (hid || S.untagged) ? `<button class="untg" data-untagged>${S.untagged ? 'Hide recordings with no tag' : `+ ${hid} with no tag`}</button>` : '';
+    const untg = !S.tag && (hid || S.sched) ? `<button class="untg" data-untagged>${S.sched ? 'Hide scheduled recordings' : `+ ${hid} scheduled`}</button>` : '';
     el.innerHTML = `<div class="dh"><div class="tt">${dayName(i)}<span>${n ? `${n} clip${n > 1 ? 's' : ''}` : i ? 'No clips' : 'No activity yet'}</span></div>${ribbonHTML(d, i)}${untg}</div>`
       + d.units.map((u) => u.length > 1 ? burstHTML(u) : rowHTML(u[0])).join('');
     el.querySelectorAll('[data-still]').forEach((s) => stillIO.observe(s));
@@ -297,7 +311,7 @@ function mount(host, config) {
     el.className = 'quiet'; el.dataset.from = q.from; el.dataset.to = q.to;
     const nm = (i) => new Date(dayStart(i)).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     el.textContent = `Nothing ${S.tag ? 'matching ' : ''}${q.from === q.to ? 'on ' + nm(q.from) : `from ${nm(q.to)} to ${nm(q.from)}`}`;
-    if (q.untg) { const b = document.createElement('button'); b.className = 'untg'; b.dataset.untagged = ''; b.dataset.day = q.from; b.textContent = `+ ${q.untg} with no tag`; el.append(document.createElement('br'), b); }
+    if (q.untg) { const b = document.createElement('button'); b.className = 'untg'; b.dataset.untagged = ''; b.dataset.day = q.from; b.textContent = `+ ${q.untg} scheduled`; el.append(document.createElement('br'), b); }
     feed.insertBefore(el, more); S.quiet = null;
   }
   // One render at a time. rebuild() bumps gen, so a render waiting on the network gives up.
@@ -402,7 +416,7 @@ function mount(host, config) {
     }
     const u = e.target.closest('[data-untagged]');
     if (u) { // stay on the day the user tapped, rather than jumping to the top
-      S.untagged = !S.untagged;
+      S.sched = !S.sched;
       rebuild(+(u.dataset.day ?? u.closest('section')?.dataset.day ?? 0));
       return;
     }
@@ -414,7 +428,7 @@ function mount(host, config) {
       markPlaying(); return;
     }
     const p = e.target.closest('[data-play]');
-    if (p) playClip(S.recs.get(p.dataset.play));
+    if (p) playClip(S.byId.get(p.dataset.play));
   });
 
   // ---- player
@@ -453,7 +467,14 @@ function mount(host, config) {
     if (c) playClip(c);
   }
   const skipBy = () => len(S.view.clip) > 600 ? 300 : 10;
-  function seek(t) { vid.currentTime = Math.min(Math.max(0, t), vid.duration || len(S.view.clip)); draw(); }
+  // A long event is still downloading from the NVR (~1 min per hour of video): only what's
+  // arrived can be seeked to.
+  function seek(t) {
+    const r = vid.seekable, max = r.length ? r.end(r.length - 1) : 0;
+    if (t > max + 1) toast(`Still loading: ${clock(max)} of ${clock(len(S.view.clip))} so far`);
+    vid.currentTime = Math.min(Math.max(0, t), max);
+    draw();
+  }
 
   vid.addEventListener('timeupdate', () => { if (S.view.mode === 'clip') { S.view.t = vid.currentTime; draw(); } });
   for (const ev of ['playing', 'pause', 'ended', 'waiting']) vid.addEventListener(ev, () => { if (S.view.mode === 'clip') { S.view.status = ev === 'waiting' ? 'Loading…' : ''; draw(); } });
@@ -480,7 +501,7 @@ function mount(host, config) {
     liveImg.hidden = isClip;
     if (!isClip && liveImg.dataset.cam !== String(ch)) { liveImg.dataset.cam = ch; liveImg.removeAttribute('src'); delete liveImg.dataset.busy; loadPic(liveImg, picture(ch)); }
     setText($('#cap'), isClip ? (v.status || '') : picture(ch) ? '' : 'No live view for this camera');
-    setText($('#vcam'), isClip ? `${cam[ch].name} · ${kind(c.tags)} · ${when(c.start)}` : cam[ch].name);
+    setText($('#vcam'), isClip ? `${cam[ch].name} · ${kind(c.tags, c.untagged)} · ${when(c.start)}` : cam[ch].name);
     $('#vbadge').className = isClip ? '' : 'badge';
     setText($('#vbadge'), isClip ? hms(c.start + v.t * 1000) : 'LIVE');
     $('#bspeed').hidden = $('#blive').hidden = !isClip;
