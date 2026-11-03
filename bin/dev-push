@@ -1,0 +1,12 @@
+#!/bin/sh
+# Push the working card to cherry's Home Assistant for testing: no restart, just reload the dashboard.
+# HA loads /local/camera-card/loader.js (family-infra lovelace.yaml), which imports the card with a
+# fresh query string so browsers and the iPhone app never serve a stale copy.
+set -eu
+cd "$(dirname "$0")/.."
+node --check card/camera-card.js
+dest=/opt/homeassistant/config/www/camera-card
+put() { ssh cherry.lan "sudo install -D -m 0644 -o homeassistant -g homeassistant /dev/stdin $dest/$1"; }
+put camera-card.js < card/camera-card.js
+printf "import('/local/camera-card/camera-card.js?t=' + Date.now());\n" | put loader.js
+echo "pushed $(git rev-parse --short HEAD)$(git diff --quiet || echo '+dirty') to cherry:$dest"
