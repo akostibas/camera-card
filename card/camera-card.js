@@ -24,14 +24,14 @@ const FILLED = new Set(['play', 'pause', 'prev', 'next']);
 const svg = (k, cls = '') => `<svg class="${FILLED.has(k) ? 'f ' : ''}${cls}" viewBox="0 0 24 24">${I[k]}</svg>`;
 
 const STYLE = `
-:host{display:block;--pg:var(--primary-background-color,#000);--cell:var(--card-background-color,#1c1c1e);--cell2:var(--secondary-background-color,#2c2c2e);--sep:var(--divider-color,#38383a);--txt:var(--primary-text-color,#f2f2f7);--mut:var(--secondary-text-color,#8e8e93);--acc:var(--primary-color,#0a84ff);--red:#ff453a}
+:host{display:block;--pg:var(--primary-background-color,#000);--cell:var(--secondary-background-color,#1c1c1e);--cell2:var(--divider-color,#2c2c2e);--sep:var(--divider-color,#38383a);--txt:var(--primary-text-color,#f2f2f7);--mut:var(--secondary-text-color,#8e8e93);--acc:var(--primary-color,#0a84ff);--red:#ff453a}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 button:disabled{opacity:.3;cursor:default}
 svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
 svg.f{fill:currentColor;stroke:none}
-#app{position:relative;height:calc(100dvh - var(--header-height,56px) - env(safe-area-inset-top,0px));max-width:600px;margin:0 auto;display:flex;flex-direction:column;overflow:hidden;color:var(--txt);font:15px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+#app{position:relative;height:calc(100dvh - var(--header-height,56px) - env(safe-area-inset-top,0px));max-width:600px;margin:0 auto;display:flex;flex-direction:column;overflow:hidden;background:var(--pg);color:var(--txt);font:15px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 #player{height:min(84vw,506px,45%);flex:none;display:flex;flex-direction:column;background:#000}
 #grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:2px;height:100%}
 .tile{position:relative;overflow:hidden;text-align:left;background:var(--cell)}
@@ -45,7 +45,7 @@ svg.f{fill:currentColor;stroke:none}
 .vtop{position:absolute;z-index:1;color:#fff;left:10px;right:10px;top:8px;display:flex;justify-content:space-between;gap:8px;white-space:nowrap;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none}
 #vcam{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .badge{color:#fff;background:var(--red);border-radius:4px;padding:1px 6px;font-size:11px;letter-spacing:.04em}
-#ctl{flex:none;display:flex;flex-direction:column;padding:2px 10px 4px;background:var(--cell)}
+#ctl{flex:none;display:flex;flex-direction:column;padding:2px 10px 4px;background:var(--pg)}
 .pill{height:30px;min-width:44px;padding:0 10px;border-radius:15px;background:var(--cell2);font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px}
 .pill.red{background:var(--red);color:#fff}
 .r2{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}
@@ -58,7 +58,7 @@ svg.f{fill:currentColor;stroke:none}
 .chips{flex:none;display:flex;gap:5px;padding:6px 10px;overflow-x:auto;scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}
 .chip{flex:none;height:30px;padding:0 8px;border-radius:15px;background:var(--cell);font-size:12px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
-.chip[aria-pressed=true]{background:var(--txt);color:var(--cell);font-weight:600}
+.chip[aria-pressed=true]{background:var(--txt);color:var(--pg);font-weight:600}
 .cd{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
 #filters{padding-top:0;border-bottom:.5px solid var(--sep)}
 #filters .sp{flex:1;min-width:0}
@@ -199,7 +199,7 @@ function mount(host, config) {
   function filter() {
     const ids = new Set(S.cam === 'all' ? S.cams.map((c) => c.ch) : [S.cam]);
     const events = merge([...S.recs.values()].filter((c) => ids.has(c.cam)).sort((a, b) => a.start - b.start));
-    S.byId = new Map(events.map((e) => [e.id, e]));
+    S.byId = new Map(events.map((e) => [e.key, e]));
     S.hiddenSched = !S.tag && !S.sched ? events.filter((e) => e.untagged) : [];
     S.all = events.filter((e) => S.tag ? e.tags.includes(S.tag) : S.sched || !e.untagged);
   }
@@ -210,8 +210,8 @@ function mount(host, config) {
     for (const c of slices) {
       const e = last[c.cam], f = c.id.split('|');
       if (e && c.start - e.end <= 2000 && f[4] === e.file && c.untagged === e.untagged && c.tags.join() === e.tags.join()) {
-        e.end = Math.max(e.end, c.end); e.parts[6] = f[6]; e.id = e.parts.join('|'); e.n++;
-      } else out.push(last[c.cam] = { ...c, file: f[4], parts: f, n: 1 });
+        if (c.end > e.end) { e.end = c.end; e.id = e.id.replace(/[^|]+$/, f[6]); }
+      } else out.push(last[c.cam] = { ...c, file: f[4], key: `${c.cam}:${c.start}` });
     }
     return out;
   }
@@ -270,7 +270,7 @@ function mount(host, config) {
   function rowHTML(c) {
     const camName = S.cam === 'all' ? `<span class="cn"><span class="cd" style="background:${camDot(c.cam)}"></span>${esc(cam[c.cam].short)}</span>` : '';
     const sub = [len(c) >= 300 ? `${hm(c.start)}–${hm(c.end)}` : hm(c.start), ago(c.start)].filter(Boolean).join(' · ');
-    return `<button class="row" data-play="${esc(c.id)}" data-t="${c.start}" aria-label="${kind(c.tags, c.untagged)} ${esc(cam[c.cam].name)} ${hm(c.start)}">
+    return `<button class="row" data-play="${c.key}" data-t="${c.start}" aria-label="${kind(c.tags, c.untagged)} ${esc(cam[c.cam].name)} ${hm(c.start)}">
       ${stillHTML(c, short(len(c)))}
       <span class="tx"><span class="t1">${icons(c)}${kind(c.tags, c.untagged)}${camName}</span><span class="t2">${sub}</span></span></button>`;
   }
@@ -385,7 +385,7 @@ function mount(host, config) {
   function markPlaying(scroll) {
     feed.querySelectorAll('.row.on').forEach((e) => e.classList.remove('on'));
     if (S.view.mode !== 'clip') return;
-    let el = feed.querySelector(`.row[data-play="${CSS.escape(S.view.clip.id)}"]`);
+    let el = feed.querySelector(`.row[data-play="${S.view.clip.key}"]`);
     if (!el) return;
     if (el.closest('.kids')?.hidden) el = el.closest('.burst').querySelector('.grp');
     el.classList.add('on');
