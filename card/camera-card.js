@@ -213,16 +213,17 @@ function mount(host, config) {
       const k = `${c.cam}|${c.id.split('|')[4]}`, x = span.get(k);
       span.set(k, x ? [Math.min(x[0], c.start), Math.max(x[1], c.end)] : [c.start, c.end]);
     }
-    const isSched = (k) => { const [a, b] = span.get(k), past = (a / 1000) % 3600; return b - a >= 20 * MIN || past <= 15 || past >= 3585; };
+    // The NVR's file names don't say (reolink_aio can't parse ours), so judge by the file's shape.
+    const isSched = (k) => { const [a, b] = span.get(k), d = new Date(a), past = d.getMinutes() * 60 + d.getSeconds(); return b - a >= 20 * MIN || past <= 15 || past >= 3585; };
     const out = [], last = {};
     for (const c of slices) {
       const e = last[c.cam], f = c.id.split('|'), fk = `${c.cam}|${f[4]}`, sched = isSched(fk);
-      if (e && len(c) < 10 && c.start <= e.end + 2000) continue; // a seconds-long stub at a file change: part of e
+      if (e && e.fk !== fk && len(c) < 10 && c.start <= e.end + 2000) continue; // a seconds-long stub at a file change: part of e
       if (e && e.fk === fk && c.start - e.end <= 2000 && (!sched || c.tags.join() === e.tags.join())) {
         if (c.end > e.end) { e.end = c.end; e.id = e.id.replace(/[^|]+$/, f[6]); }
         if (!sched) e.tags = [...new Set([...e.tags, ...c.tags])].sort();
       } else {
-        if (e && e.end - e.start < 10000 && c.start <= e.end + 2000) e.drop = true; // ... or just before it
+        if (e && e.fk !== fk && e.end - e.start < 10000 && c.start <= e.end + 2000) e.drop = true; // ... or just before it
         out.push(last[c.cam] = { ...c, fk, sched, key: `${c.cam}:${c.start}` });
       }
     }
@@ -288,7 +289,7 @@ function mount(host, config) {
       <span class="tx"><span class="t1">${icons(c)}${kind(c.tags, c.sched)}${camName}</span><span class="t2">${sub}</span></span></button>`;
   }
   function burstHTML(r) {
-    const first = r[0], lastC = r[r.length - 1], key = first.id;
+    const first = r[0], lastC = r[r.length - 1], key = first.key;
     const tags = [...new Set(r.flatMap((c) => c.tags))];
     const open = S.open.has(key);
     return `<div class="burst${open ? ' open' : ''}" data-key="${esc(key)}">
