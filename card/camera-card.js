@@ -31,19 +31,19 @@ button:disabled{opacity:.3;cursor:default}
 svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
 svg.f{fill:currentColor;stroke:none}
 #app{position:relative;height:calc(100dvh - var(--header-height,56px) - env(safe-area-inset-top,0px));max-width:600px;margin:0 auto;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);color:var(--txt);font:15px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-#player{aspect-ratio:16/13.5;flex:none;display:flex;flex-direction:column;background:#000}
+#player{height:min(84vw,506px,45%);flex:none;display:flex;flex-direction:column;background:#000}
 #grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:2px;height:100%}
 .tile{position:relative;overflow:hidden;text-align:left;background:var(--cell)}
 .tile img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .tile .nm{position:absolute;left:8px;top:6px;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000}
 .tile .lv{position:absolute;right:6px;top:6px;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:#fffc;background:#0006;border-radius:3px;padding:1px 4px}
 #single{display:flex;flex-direction:column;height:100%}
-#video{position:relative;aspect-ratio:16/9;flex:none;display:grid;place-items:center;overflow:hidden;background:#000}
+#video{position:relative;flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;background:#000}
 #video video,#video #live,#video #liveimg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #cap{position:relative;max-width:84%;text-align:center;font-size:15px;color:var(--mut)}
 .vtop{position:absolute;z-index:1;left:10px;right:10px;top:8px;display:flex;justify-content:space-between;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none}
 .badge{background:var(--red);border-radius:4px;padding:1px 6px;font-size:11px;letter-spacing:.04em}
-#ctl{flex:1;display:flex;flex-direction:column;justify-content:space-between;padding:6px 12px 4px;background:var(--cell)}
+#ctl{flex:none;gap:2px;display:flex;flex-direction:column;justify-content:space-between;padding:6px 12px 4px;background:var(--cell)}
 .r1{display:flex;align-items:center;gap:6px;min-height:30px}
 #info{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
 #info span{color:var(--mut);margin-left:6px}
@@ -161,8 +161,8 @@ const short = (s) => s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s /
 const len = (c) => (c.end - c.start) / 1000;
 const KN = { doorbell: 'Rang the bell', person: 'Person', vehicle: 'Vehicle', animal: 'Animal' };
 const ordered = (tags) => ['doorbell', 'person', 'vehicle', 'animal'].filter((t) => tags.includes(t));
-const kind = (tags, untagged) => untagged ? 'Not tagged' : tags.length ? ordered(tags).map((t) => KN[t]).join(' · ') : 'Motion';
-const icons = (c) => c.untagged ? svg('unknown') : c.tags.length ? ordered(c.tags).map((t) => svg(t)).join('') : svg('motion');
+const kind = (tags) => tags.length ? ordered(tags).map((t) => KN[t]).join(' · ') : 'Motion';
+const icons = (c) => c.tags.length ? ordered(c.tags).map((t) => svg(t)).join('') : svg('motion');
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 class CameraCard extends HTMLElement {
