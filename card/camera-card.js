@@ -664,7 +664,18 @@ function mount(host, config) {
         rebuild().then(refreshToday).catch(() => {});
       } else if (++ticks % 15 === 0) refreshToday().catch(() => {}); // every 30 s
     };
-    host._timers = { start() { timer ??= setInterval(tick, 2000); }, stop() { clearInterval(timer); timer = null; } };
+    // Alert pushes link here with ?live=<camera entity>; location-changed covers an app that was already open.
+    const openLinked = () => {
+      const u = new URL(location.href), e = u.searchParams.get('live');
+      if (!e) return;
+      u.searchParams.delete('live'); history.replaceState(history.state, '', u);
+      const c = S.cams.find((c) => cam[c.ch].entity === e);
+      if (c) goLive(c.ch);
+    };
+    host._timers = {
+      start() { timer ??= setInterval(tick, 2000); addEventListener('location-changed', openLinked); openLinked(); },
+      stop() { clearInterval(timer); timer = null; removeEventListener('location-changed', openLinked); },
+    };
     if (host.isConnected) host._timers.start();
   })();
 }
