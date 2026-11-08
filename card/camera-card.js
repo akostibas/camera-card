@@ -19,6 +19,8 @@ const I = {
   chev: '<path d="M9 6l6 6-6 6"/>',
   doorbell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  snd: '<path d="M4 9.5h3.5L12 5v14l-4.5-4.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
+  mute: '<path d="M4 9.5h3.5L12 5v14l-4.5-4.5H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>',
   full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   unknown: '<circle cx="12" cy="12" r="8"/><path d="M9.8 9.5a2.3 2.3 0 1 1 3.2 2.1c-.6.3-1 .8-1 1.4v.5M12 16.5v.01"/>',
 };
@@ -45,7 +47,6 @@ svg.f{fill:currentColor;stroke:none}
 #live{--video-max-height:100%}#live ha-camera-stream{display:block;width:100%;height:100%}
 #video video,#video #live,#video #liveimg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #video.max{position:fixed;inset:0;z-index:20}
-@media (orientation:landscape) and (max-height:500px) and (pointer:coarse){#video{position:fixed;inset:0;z-index:20}}
 #cap{position:relative;max-width:84%;text-align:center;font-size:15px;color:var(--mut)}
 .vtop{position:absolute;z-index:1;color:#fff;left:10px;right:10px;top:8px;display:flex;justify-content:space-between;gap:8px;white-space:nowrap;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none}
 #vcam{min-width:0;overflow:hidden;text-overflow:ellipsis}
@@ -130,6 +131,7 @@ const HTML = `
           <button class="pill" id="bspeed" aria-label="Playback speed">1×</button>
           <button class="pill red" id="blive" aria-label="Go live">Live</button>
           <button class="pill" id="bgrid" aria-label="All cameras"></button>
+          <button id="bmute"></button>
           <button id="bfull" aria-label="Full screen"></button>
         </div>
       </div>
@@ -186,7 +188,7 @@ function mount(host, config) {
   root.innerHTML = `<style>${STYLE}</style>${HTML}`;
   const $ = (s) => root.querySelector(s);
   const api = (path) => Promise.race([host.hass.callApi('GET', path), new Promise((_, no) => setTimeout(() => no(new Error('timed out')), 15000))]);
-  const S = { cams: [], recs: new Map(), byId: new Map(), hiddenSched: [], loaded: -1, oldest: 0, sched: false, pick: new Set(), tags: new Set(), view: { mode: 'grid' }, speed: 1, all: [], next: 0, quiet: null, open: new Set(), seeking: false, playSeq: 0, gen: 0 };
+  const S = { cams: [], recs: new Map(), byId: new Map(), hiddenSched: [], loaded: -1, oldest: 0, sched: false, pick: new Set(), tags: new Set(), view: { mode: 'grid' }, speed: 1, all: [], next: 0, quiet: null, open: new Set(), seeking: false, playSeq: 0, gen: 0, muted: true };
   const cam = {};
   const camDot = (ch) => PALETTE[S.cams.findIndex((c) => c.ch === ch) % PALETTE.length];
 
@@ -462,6 +464,7 @@ function mount(host, config) {
 
   // ---- player
   const grid = $('#grid'), single = $('#single'), vid = $('#vid'), liveImg = $('#liveimg'), liveBox = $('#live'), seekEl = $('#seek');
+  let full = null; // the element in fullscreen, which always has sound
   $('#bgrid').innerHTML = svg('grid');
   $('#bprev').innerHTML = svg('prev');
   $('#bnext').innerHTML = svg('next');
@@ -479,6 +482,7 @@ function mount(host, config) {
       // iPhone opens a still-downloading clip near its newest part, ignoring the playlist's start.
       vid.addEventListener('playing', () => { if (my === S.playSeq && vid.currentTime > 1) vid.currentTime = vid.seekable.length ? vid.seekable.start(0) : 0; }, { once: true });
       vid.src = url;
+      vid.muted = S.muted && full !== vid;
       vid.playbackRate = S.speed;
       await vid.play();
     } catch (e) {
@@ -525,12 +529,49 @@ function mount(host, config) {
   // The live <video> sits inside HA's player, behind open shadow roots.
   const streamVideo = (n = liveBox) => { for (const c of [...(n.shadowRoot?.children || []), ...n.children]) { if (c.tagName === 'VIDEO' && c.readyState >= 2) return c; const v = streamVideo(c); if (v) return v; } };
   // iPhone fullscreens only a <video>, in its own player: a live view still on snapshots covers the page.
-  $('#bfull').onclick = () => {
+  // Sound is set before entering, inside the tap: iPhone may refuse it later.
+  function enterFull() {
     const el = S.view.mode === 'clip' ? vid : $('#video'), sv = S.view.mode === 'live' && streamVideo();
-    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
-    else if (el === vid || sv) (sv || vid).webkitEnterFullscreen();
-    else el.classList.add('max');
-  };
+    if (el.requestFullscreen) { full = el; applySound(); return el.requestFullscreen().catch(() => { full = null; applySound(); }); }
+    const v = el === vid ? vid : sv;
+    if (!v) return el.classList.add('max');
+    full = v; applySound();
+    if (v !== vid) v.addEventListener('webkitendfullscreen', endFull, { once: true });
+    v.webkitEnterFullscreen();
+  }
+  const endFull = () => { full = null; applySound(); };
+  $('#bfull').onclick = enterFull;
+  for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => { full = document.fullscreenElement || document.webkitFullscreenElement || null; applySound(); });
+  vid.addEventListener('webkitendfullscreen', endFull);
+  // Turning a phone sideways opens the native player, as video apps do. It needs a video already playing.
+  const sideways = matchMedia('(orientation: landscape) and (pointer: coarse)');
+  sideways.addEventListener('change', () => {
+    if (sideways.matches && !full && (S.view.mode === 'clip' ? !vid.paused : streamVideo())) enterFull();
+  });
+
+  // Sound: muted on every open and whenever the page is left; fullscreen always has it.
+  function setMuted(v, m) {
+    if (!v || v.muted === m) return;
+    const going = !v.paused;
+    v.muted = m;
+    // iPhone may refuse sound without a fresh tap and pause the video: keep it playing, muted
+    if (!m && going) v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+  }
+  // HA's WebRTC player drops the audio track when it's created muted, as ours is (to autoplay):
+  // put it back. Uses its private _peerConnection; if HA renames that, live is just silent.
+  function withAudio(v) {
+    const s = v?.srcObject, a = v?.getRootNode().host?._peerConnection?.getReceivers().find(r => r.track.kind === 'audio')?.track;
+    if (s && a && !s.getAudioTracks().length) s.addTrack(a);
+    return v;
+  }
+  function applySound() {
+    const m = S.muted && !full;
+    setMuted(vid, m); setMuted(withAudio(streamVideo()), m);
+  }
+  $('#bmute').onclick = () => { S.muted = !S.muted; applySound(); draw(); };
+  const hush = () => { if (!S.muted) { S.muted = true; applySound(); draw(); } };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) hush(); });
+  window.addEventListener('blur', hush);
 
   const setText = (el, s) => { if (el.textContent !== s) el.textContent = s; };
   function draw() {
@@ -563,6 +604,10 @@ function mount(host, config) {
     $('#bback').disabled = $('#bfwd').disabled = !isClip;
     $('#bprev').setAttribute('aria-label', isClip ? 'Previous clip' : 'Latest recording');
     $('#bnext').disabled = !isClip;
+    if ($('#bmute').dataset.s !== String(S.muted)) {
+      $('#bmute').dataset.s = S.muted; $('#bmute').innerHTML = svg(S.muted ? 'mute' : 'snd');
+      $('#bmute').setAttribute('aria-label', S.muted ? 'Unmute' : 'Mute');
+    }
   }
   // HA's own player: WebRTC through go2rtc, else HLS. The snapshot underneath shows until it connects.
   // ha-camera-stream loads with HA's frontend, not on demand: without it, live stays snapshots.
@@ -593,6 +638,7 @@ function mount(host, config) {
   function tickPictures() {
     if (S.view.mode === 'grid') for (const t of grid.children) if (!t.hidden) loadPic(t.querySelector('img'), picture(+t.dataset.cam));
     if (S.view.mode === 'live' && !liveBox.firstElementChild) loadPic(liveImg, picture(S.view.cam));
+    applySound(); // a live stream that just connected starts muted
   }
 
   // ---- cameras & filters
