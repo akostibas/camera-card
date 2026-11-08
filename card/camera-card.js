@@ -557,9 +557,16 @@ function mount(host, config) {
     // iPhone may refuse sound without a fresh tap and pause the video: keep it playing, muted
     if (!m && going) v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
   }
+  // HA's WebRTC player drops the audio track when it's created muted, as ours is (to autoplay):
+  // put it back. Uses its private _peerConnection; if HA renames that, live is just silent.
+  function withAudio(v) {
+    const s = v?.srcObject, a = v?.getRootNode().host?._peerConnection?.getReceivers().find(r => r.track.kind === 'audio')?.track;
+    if (s && a && !s.getAudioTracks().length) s.addTrack(a);
+    return v;
+  }
   function applySound() {
     const m = S.muted && !full;
-    setMuted(vid, m); setMuted(streamVideo(), m);
+    setMuted(vid, m); setMuted(withAudio(streamVideo()), m);
   }
   $('#bmute').onclick = () => { S.muted = !S.muted; applySound(); draw(); };
   const hush = () => { if (!S.muted) { S.muted = true; applySound(); draw(); } };
