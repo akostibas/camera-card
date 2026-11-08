@@ -15,7 +15,6 @@ const I = {
   prev: '<path d="M5 5h2.5v14H5zM20 5v14L9 12z"/>',
   next: '<path d="M16.5 5H19v14h-2.5zM4 5v14l11-7z"/>',
   cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
-  grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
   chev: '<path d="M9 6l6 6-6 6"/>',
   doorbell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
@@ -50,7 +49,6 @@ svg.f{fill:currentColor;stroke:none}
 #cap{position:relative;max-width:84%;text-align:center;font-size:15px;color:var(--mut)}
 .vtop{position:absolute;z-index:1;color:#fff;left:10px;right:10px;top:8px;display:flex;justify-content:space-between;gap:8px;white-space:nowrap;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none}
 #vcam{min-width:0;overflow:hidden;text-overflow:ellipsis}
-.badge{color:#fff;background:var(--red);border-radius:4px;padding:1px 6px;font-size:11px;letter-spacing:.04em}
 #ctl{flex:none;display:flex;flex-direction:column;padding:2px 10px 4px;background:var(--pg)}
 .pill{height:30px;min-width:44px;padding:0 10px;border-radius:15px;background:var(--cell2);font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px}
 .pill.red{background:var(--red);color:#fff}
@@ -129,8 +127,7 @@ const HTML = `
           <button id="bnext" aria-label="Next clip"></button>
           <span class="sp"></span>
           <button class="pill" id="bspeed" aria-label="Playback speed">1×</button>
-          <button class="pill red" id="blive" aria-label="Go live">Live</button>
-          <button class="pill" id="bgrid" aria-label="All cameras"></button>
+          <button class="pill" id="blive">Live</button>
           <button id="bmute"></button>
           <button id="bfull" aria-label="Full screen"></button>
         </div>
@@ -465,7 +462,6 @@ function mount(host, config) {
   // ---- player
   const grid = $('#grid'), single = $('#single'), vid = $('#vid'), liveImg = $('#liveimg'), liveBox = $('#live'), seekEl = $('#seek');
   let full = null; // the element in fullscreen, which always has sound
-  $('#bgrid').innerHTML = svg('grid');
   $('#bprev').innerHTML = svg('prev');
   $('#bnext').innerHTML = svg('next');
   const picture = (ch) => { const e = cam[ch].entity; return e && host.hass.states[e]?.attributes.entity_picture; };
@@ -492,7 +488,9 @@ function mount(host, config) {
     }
     draw();
   }
-  function goLive(ch) { ++S.playSeq; vid.pause(); vid.removeAttribute('src'); vid.load(); S.view = { mode: 'live', cam: ch }; draw(); markPlaying(); }
+  function goLive(ch) {
+    if (S.pick.size !== 1 || !S.pick.has(ch)) { S.pick = new Set([ch]); pressChips(); rebuild(); } // the chips show what's on screen
+    ++S.playSeq; vid.pause(); vid.removeAttribute('src'); vid.load(); S.view = { mode: 'live', cam: ch }; draw(); markPlaying(); }
   function showGrid() { ++S.playSeq; vid.pause(); vid.removeAttribute('src'); vid.load(); S.view = { mode: 'grid' }; draw(); markPlaying(); }
   function step(dir) {
     const v = S.view;
@@ -519,8 +517,7 @@ function mount(host, config) {
   $('#bfwd').onclick = () => seek(vid.currentTime + skipBy());
   $('#bprev').onclick = () => { if (S.view.mode === 'clip' && vid.currentTime > 3) seek(0); else step(-1); };
   $('#bnext').onclick = () => step(1);
-  $('#blive').onclick = () => goLive(S.view.clip.cam);
-  $('#bgrid').onclick = showGrid;
+  $('#blive').onclick = () => { if (S.view.mode === 'clip') goLive(S.view.clip.cam); };
   $('#bspeed').onclick = () => { S.speed = { 1: 2, 2: 4, 4: 1 }[S.speed]; vid.playbackRate = S.speed; draw(); };
   seekEl.addEventListener('input', () => { S.seeking = true; seek(+seekEl.value); });
   seekEl.addEventListener('change', () => { S.seeking = false; });
@@ -586,10 +583,10 @@ function mount(host, config) {
     if (!isClip) drawStream(ch);
     setText($('#cap'), isClip ? (v.status || '') : picture(ch) ? '' : 'No live view for this camera');
     setText($('#vcam'), isClip ? `${cam[ch].name} · ${kind(c.tags, c.sched)} · ${when(c.start)}` : cam[ch].name);
-    $('#vbadge').className = isClip ? '' : 'badge';
-    setText($('#vbadge'), isClip ? hms(c.start + v.t * 1000) : 'LIVE');
-    $('#bspeed').hidden = $('#blive').hidden = !isClip;
-    $('#bgrid').hidden = isClip || S.pick.size === 1;
+    setText($('#vbadge'), isClip ? hms(c.start + v.t * 1000) : '');
+    $('#bspeed').hidden = !isClip;
+    $('#blive').classList.toggle('red', !isClip); // red: watching live; grey: tap to go live
+    $('#blive').setAttribute('aria-label', isClip ? 'Go live' : 'Live');
     setText($('#bspeed'), S.speed + '×');
     const L = isClip ? len(c) : 1;
     seekEl.disabled = !isClip; seekEl.max = L;
@@ -643,16 +640,17 @@ function mount(host, config) {
 
   // ---- cameras & filters
   const camsEl = $('#cams');
+  function pressChips() { camsEl.querySelectorAll('.chip').forEach((x) => x.setAttribute('aria-pressed', x.dataset.cam === 'all' ? !S.pick.size : S.pick.has(+x.dataset.cam))); }
   // Camera chips toggle (All clears): they filter the list. The player follows: one camera is live, more is a grid.
   camsEl.addEventListener('click', (e) => {
     const b = e.target.closest('[data-cam]'); if (!b) return;
     const ch = b.dataset.cam === 'all' ? null : +b.dataset.cam;
     if (ch === null) S.pick.clear(); else S.pick.has(ch) ? S.pick.delete(ch) : S.pick.add(ch);
-    camsEl.querySelectorAll('.chip').forEach((x) => x.setAttribute('aria-pressed', x.dataset.cam === 'all' ? !S.pick.size : S.pick.has(+x.dataset.cam)));
+    pressChips();
     rebuild();
     S.pick.size === 1 ? goLive([...S.pick][0]) : showGrid();
   });
-  grid.addEventListener('click', (e) => { const t = e.target.closest('[data-cam]'); if (t) goLive(+t.dataset.cam); }); // keeps the picks
+  grid.addEventListener('click', (e) => { const t = e.target.closest('[data-cam]'); if (t) goLive(+t.dataset.cam); });
   $('#filters').addEventListener('click', (e) => {
     const b = e.target.closest('[data-tag]'); if (!b) return;
     const t = b.dataset.tag;
