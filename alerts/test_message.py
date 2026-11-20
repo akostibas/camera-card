@@ -114,6 +114,9 @@ def demo():
     assert render(street, traffic("van", 0.3, parking_at_the_near_curb=0.7), "Vehicle") == "A vehicle is parking at the near curb."
     assert render(street, traffic("other", pulling_away_from_the_far_curb=0.5), "Vehicle") == "A vehicle is maybe pulling away from the far curb."
     assert render(street, traffic("car"), "Vehicle") == "A car was spotted."
+    # One vehicle does one thing: the surest, however many the model says yes to.
+    both_curbs = traffic("car", parking_at_the_near_curb=0.76, parking_at_the_far_curb=0.69, passing_by=0.74)
+    assert render(street, both_curbs, "Vehicle") == "A car is parking at the near curb."
     still = traffic("no vehicle moves", moving=("no", 0.9))
     assert render(street, still, "Vehicle") == "Vehicle detected, but it looks like a false alarm."
     # Smoking needs more than a lukewarm yes.
