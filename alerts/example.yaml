@@ -1,0 +1,68 @@
+# Example alert settings for one household. Copy it, describe your own cameras, and keep your copy
+# out of this repo. test_message.py checks the wording rules against this file.
+
+# How sure the model must be (0 to 1) before something is said.
+thresholds:
+  sure: 0.5         # who, how many, that there is an animal, that a door is open
+  maybe: 0.3        # an animal's kind, said as "maybe a rat"
+  act_sure: 0.6     # an activity; a weaker yes is said as "maybe", and only if nothing is sure
+  sex_sure: 0.7     # "a man" / "a woman"; below this it stays "an adult"
+  car_sure: 0.6     # which car, and that it is coming or going; below this "a car may be"
+  false_alarm: 0.8  # that nobody is there, said as "looks like a false alarm"
+
+# Per camera:
+#   scene          one-line description of the view, sent with the pictures
+#   clip           true: the pictures are a few seconds of footage; false: one snapshot, sent at once
+#   actions_list   ask who is there and what they are doing. Entries must read after "is", in the
+#                  order they would happen; the last is the generic fallback
+#   max_actions    how many activities one alert may report (default 2)
+#   action_min     {activity: confidence} for activities that need more than a bare yes
+#   animals_list   ask whether there is an animal and what kind
+#   car_names      ask whether a car drove in or out, and name it by shade: {dark: ..., light: ...}
+#   door_check     ask whether the garage door was left open
+#   fallback       what to say when the model can't be asked (default "<what the camera detected> detected")
+cameras:
+  doorbell:
+    scene: Doorbell camera looking out from the front door.
+    clip: false  # someone is waiting at the door: don't hold the alert for footage
+    actions_list:
+      - delivering a package
+      - here for maintenance or repair work
+      - leaving
+      - waiting at the door
+    max_actions: 1  # one still picture: a second activity is a second guess, not a second event
+    action_min: {delivering a package: 0.8}
+    fallback: Someone is at the door
+
+  garage:
+    scene: >-
+      Security camera on the back wall of a garage, looking out through the garage door at the
+      driveway and the street. Cars on the street are not in the garage or driveway: ignore them.
+    clip: true
+    actions_list:
+      - opening the garage door
+      - walking in
+      - getting into a car
+      - walking out
+      - closing the garage door
+      - near the garage
+    animals_list: [rat, mouse, cat, dog, raccoon, other]
+    car_names: {dark: wagon, light: hatchback}
+    door_check: true
+
+  side_yard:
+    scene: Security camera looking down a side yard, with a shed on the left and a gate at the far end.
+    clip: true
+    actions_list:
+      - arriving through the gate
+      - walking from the house
+      - coming out of the shed
+      - going into the shed
+      - leaving through the gate
+      - standing or working in the yard
+
+  crawl_space:
+    scene: Security camera in a dark crawl space under a house, often in infrared black and white.
+    clip: true
+    actions_list: [working on equipment or wiring, looking around, in the crawl space]
+    animals_list: [rat, mouse, cat, opossum, other]
