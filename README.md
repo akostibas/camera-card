@@ -3,9 +3,11 @@
 A Home Assistant dashboard card for our Reolink cameras: recent recordings as a scrolling list,
 one-tap playback, live view, and a camera grid. Start with the [product intent](docs/intent.md).
 
-`alerts/` turns a vision model's answers about a camera's pictures into the sentence a phone alert
-says ("A man is leaving through the gate."). `alerts/example.yaml` shows a household's settings;
-`uv run alerts/test_message.py` checks the wording rules. Nothing sends alerts from here yet.
+`alerts/` writes the sentence a phone alert says ("A man is leaving through the gate.") from
+what a vision model sees in a camera's pictures. Home Assistant runs
+`python3 alerts/describe.py SETTINGS.yaml CAMERA TRIGGER PICTURE...` and sends what it prints;
+`alerts/example.yaml` shows a household's settings. Each run with pictures is one paid model
+call. `uv run alerts/test_message.py` checks the wording rules and costs nothing.
 
 It needs our patched copy of Home Assistant's Reolink integration (not in this repo yet), which
 serves `/api/reolink/recordings`, `/api/reolink/still` and `/api/reolink/play`, and a tagged release

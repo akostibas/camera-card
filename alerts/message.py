@@ -32,7 +32,7 @@ def questions(cfg, files):
         ]
     if cfg.get("door_check"):
         args += ["--yesno", "door=In the last image, is the garage door open?"]
-    return args + [cfg["scene"] + (" Images are in time order." if cfg.get("clip") else "")]
+    return args + [cfg["scene"] + (" Images are in time order." if len(files) > 1 else "")]
 
 
 def _int(s, default):

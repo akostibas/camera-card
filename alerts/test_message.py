@@ -1,19 +1,16 @@
 # /// script
 # requires-python = ">=3.13"
-# dependencies = ["jinja2", "pyyaml"]
+# dependencies = ["pyyaml"]
 # ///
-"""Check the alert wording.
+"""Check the alert wording rules against example.yaml. Free: the model is never called.
 
-  uv run test_message.py                       assert the wording rules against example.yaml
-  uv run test_message.py compare AUTOMATIONS   same text as the Home Assistant automations it replaces?
+  uv run test_message.py
 """
-import random
-import shlex
-import sys
 from pathlib import Path
 
 import yaml
 
+from describe import describe
 from message import message, questions
 
 EXAMPLE = yaml.safe_load((Path(__file__).parent / "example.yaml").read_text())
@@ -109,49 +106,21 @@ def demo():
     # Model down: plain wording.
     assert render(door, None) == "Someone is at the door."
     assert render(crawl, None) == "Person detected."
+
+    # No pictures: the model is not asked. Model fails: plain wording. Model answers: its sentence.
+    def fail(cfg, files):
+        raise TimeoutError
+    assert describe(EXAMPLE, crawl, "Animal", [], ask=None) == "Animal detected."
+    assert describe(EXAMPLE, door, "0", ["a.jpg"], ask=fail) == "Someone is at the door."
+    assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=lambda cfg, files: tech) == "An adult is working on equipment or wiring."
+    seen = []
+    describe(EXAMPLE, crawl, "Person", [f"{i}.jpg" for i in range(75)], ask=lambda cfg, files: seen.extend(files) or tech)
+    assert len(seen) == 15 and seen[:2] == ["0.jpg", "5.jpg"]
+    # One picture is a snapshot; several are footage, and the model is told they are in order.
+    assert questions(CAMERAS[door], ["a.jpg"])[-1] == CAMERAS[door]["scene"]
+    assert questions(CAMERAS[crawl], ["a.jpg", "b.jpg"])[-1].endswith(" Images are in time order.")
     print("ok")
 
 
-def random_answers(args, rng):
-    """A made-up answer to every question in args, with confidences that land on and around the thresholds."""
-    conf = [0.25, 0.29, 0.3, 0.45, 0.5, 0.55, 0.59, 0.6, 0.65, 0.69, 0.7, 0.75, 0.79, 0.8, 0.9, 0.97]
-    out = {}
-    for flag, spec in zip(args, args[1:]):
-        if flag not in ("--yesno", "--choice"):
-            continue
-        key, _, rest = spec.partition("=")
-        options = rest.rpartition(":")[2].split(",") if flag == "--choice" else ["yes", "no"]
-        out[key] = q(rng.choice(options), rng.choice(conf))
-    return out
-
-
-# COMPAT: remove after 2026-12-20, once the alerts run from this code and the automations are gone.
-def compare(path, rounds=3000):
-    """Same questions and, for made-up answers, the same text as the Home Assistant automations in path."""
-    import jinja2
-    env, rng = jinja2.Environment(), random.Random(1)
-    files = ["/a.jpg", "/b.jpg"]
-    for auto in yaml.safe_load(Path(path).read_text()):
-        steps = auto["actions"]
-        ask = next(s["then"][0]["data"]["args"] for s in steps if "then" in s and "ask_gemini" in str(s))
-        say = next(s["variables"] for s in steps if "message" in s.get("variables", {}))
-        cfg = auto["variables"]
-        t = {**{k: v for k, v in say.items() if isinstance(v, float)}, "car_sure": 0.6, "false_alarm": 0.8}
-        args = questions(cfg, files)
-        assert args == shlex.split(env.from_string(ask).render({**cfg, "files": files})), auto["id"]
-        template = env.from_string(say["message"])
-        for i in range(rounds):
-            a = None if i == 0 else random_answers(args, rng)
-            trigger = rng.choice(["Person", "Vehicle", "Animal"])
-            old = template.render({**cfg, **t, "a": a, "trigger": {"id": trigger}}).strip()
-            if old.startswith(("are ", "were ")):
-                continue  # the automations drop the subject for "5 or more" adults with no men or women counted
-            assert message(cfg, t, a, trigger) == old, (auto["id"], a, old, message(cfg, t, a, trigger))
-        print(f"{auto['id']}: questions match, {rounds} made-up alerts read the same")
-
-
 if __name__ == "__main__":
-    if sys.argv[1:2] == ["compare"]:
-        compare(sys.argv[2])
-    else:
-        demo()
+    demo()

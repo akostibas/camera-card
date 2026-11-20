@@ -12,7 +12,6 @@ thresholds:
 
 # Per camera:
 #   scene          one-line description of the view, sent with the pictures
-#   clip           true: the pictures are a few seconds of footage; false: one snapshot, sent at once
 #   actions_list   ask who is there and what they are doing. Entries must read after "is", in the
 #                  order they would happen; the last is the generic fallback
 #   max_actions    how many activities one alert may report (default 2)
@@ -24,13 +23,12 @@ thresholds:
 cameras:
   doorbell:
     scene: Doorbell camera looking out from the front door.
-    clip: false  # someone is waiting at the door: don't hold the alert for footage
     actions_list:
       - delivering a package
       - here for maintenance or repair work
       - leaving
       - waiting at the door
-    max_actions: 1  # one still picture: a second activity is a second guess, not a second event
+    max_actions: 1  # the doorbell sends one still picture: a second activity is a second guess, not a second event
     action_min: {delivering a package: 0.8}
     fallback: Someone is at the door
 
@@ -38,7 +36,6 @@ cameras:
     scene: >-
       Security camera on the back wall of a garage, looking out through the garage door at the
       driveway and the street. Cars on the street are not in the garage or driveway: ignore them.
-    clip: true
     actions_list:
       - opening the garage door
       - walking in
@@ -52,7 +49,6 @@ cameras:
 
   side_yard:
     scene: Security camera looking down a side yard, with a shed on the left and a gate at the far end.
-    clip: true
     actions_list:
       - arriving through the gate
       - walking from the house
@@ -63,6 +59,5 @@ cameras:
 
   crawl_space:
     scene: Security camera in a dark crawl space under a house, often in infrared black and white.
-    clip: true
     actions_list: [working on equipment or wiring, looking around, in the crawl space]
     animals_list: [rat, mouse, cat, opossum, other]
