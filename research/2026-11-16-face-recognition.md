@@ -107,8 +107,9 @@ someone known?", and only frames of unknown people go to the off-site model.
 ## Why shelved, and when to come back
 
 The alerts already describe who is doing what well enough to judge whether to
-look ("A woman is walking to the back building."). Names would have changed
-few alerts for real upkeep.
+look ("A woman is walking to the back building."), and the push carries a
+picture, so a glance settles who it is. Names would have changed few alerts
+for real upkeep.
 
 Come back by use case. Ask what should get more reliable, then pick the
 cheapest thing that moves it:
