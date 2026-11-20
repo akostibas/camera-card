@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from describe import describe
+from describe import budget, describe, describe_unpushed
 from message import message, questions
 
 EXAMPLE = yaml.safe_load((Path(__file__).parent / "example.yaml").read_text())
@@ -25,12 +25,12 @@ def q(value, confidence):
     return {"answer": value, "choice": value, "confidence": confidence}
 
 
-def doing(camera, **yes):
+def doing(camera, key="act", **yes):
     """Activity answers: 'no' to everything except the named ones, e.g. doing("side_yard", going_into_the_shed=0.9)."""
     want = {k.replace("_", " "): c for k, c in yes.items()}
-    acts = CAMERAS[camera]["actions_list"]
+    acts = CAMERAS[camera]["actions_list" if key == "act" else "vehicle_actions_list"]
     assert set(want) <= set(acts), set(want) - set(acts)
-    return {f"act{i}": q("yes", want[act]) if act in want else q("no", 0.9) for i, act in enumerate(acts, 1)}
+    return {f"{key}{i}": q("yes", want[act]) if act in want else q("no", 0.9) for i, act in enumerate(acts, 1)}
 
 
 def demo():
@@ -103,6 +103,25 @@ def demo():
     courier = {**adult, **doing(door, delivering_a_package=0.9, here_for_maintenance_or_repair_work=0.62)}
     assert render(door, courier) == "An adult is delivering a package."
 
+    # Street: only a vehicle that moves is news, named as far as the model is sure.
+    street = "street"
+    nobody = {"person": q("no", 0.9), **doing(street)}
+
+    def traffic(kind, sure=0.9, moving=("yes", 0.9), **yes):
+        return {**nobody, "vmove": q(*moving), "vkind": q(kind, sure), **doing(street, "vact", **yes)}
+    assert render(street, traffic("pickup truck", passing_by=0.9), "Vehicle") == "A pickup truck is passing by."
+    assert render(street, traffic("trash truck", collecting_the_trash=0.8, passing_by=0.9), "Vehicle") == "A trash truck is collecting the trash."
+    assert render(street, traffic("van", 0.3, parking_at_the_near_curb=0.7), "Vehicle") == "A vehicle is parking at the near curb."
+    assert render(street, traffic("other", pulling_away_from_the_far_curb=0.5), "Vehicle") == "A vehicle is maybe pulling away from the far curb."
+    assert render(street, traffic("car"), "Vehicle") == "A car was spotted."
+    still = traffic("no vehicle moves", moving=("no", 0.9))
+    assert render(street, still, "Vehicle") == "Vehicle detected, but it looks like a false alarm."
+    # Smoking needs more than a lukewarm yes.
+    walker = {**still, **adult, **doing(street, walking_a_dog=0.9, smoking=0.7)}
+    assert render(street, walker) == "An adult is walking a dog."
+    driver = {**traffic("car", pulling_away_from_the_near_curb=0.8), **adult, **doing(street, getting_into_a_car=0.8)}
+    assert render(street, driver) == "An adult is getting into a car. A car is pulling away from the near curb."
+
     # Model down: plain wording.
     assert render(door, None) == "Someone is at the door."
     assert render(crawl, None) == "Person detected."
@@ -116,6 +135,33 @@ def demo():
     seen = []
     describe(EXAMPLE, crawl, "Person", [f"{i}.jpg" for i in range(75)], ask=lambda cfg, files: seen.extend(files) or tech)
     assert len(seen) == 15 and seen[:2] == ["0.jpg", "5.jpg"]
+    # Not pushed: described only at the camera's level, and only kept when there is something to say.
+    passing = traffic("car", passing_by=0.9)
+
+    def unpushed(camera, trigger, answers=passing, files=("a.jpg",), **kw):
+        return describe_unpushed(EXAMPLE, camera, trigger, list(files), ask=lambda cfg, files: answers, **kw)
+    assert unpushed(street, "Vehicle") == ("A car is passing by.", 0)
+    assert unpushed(street, "Motion") == ("", 0), "event level leaves plain motion alone"
+    assert unpushed(crawl, "Animal", pest) == ("", 0), "cameras describe on push unless told otherwise"
+    assert unpushed(street, "Vehicle", files=()) == ("", 0)
+    assert unpushed(street, "Vehicle", still) == ("Vehicle detected, but it looks like a false alarm.", 0)
+    assert describe_unpushed(EXAMPLE, street, "Vehicle", ["a.jpg"], ask=fail) == ("", 0), "plain wording is not worth keeping"
+    motion = {**EXAMPLE, "cameras": {street: {**CAMERAS[street], "describe": "motion"}}}
+    assert describe_unpushed(motion, street, "Motion", ["a.jpg"], ask=lambda cfg, files: passing) == ("A car is passing by.", 0)
+
+    # The day's limit: the first call refused carries the warning, later ones are just plain, tomorrow starts over.
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        spend = budget(f"{d}/count", 2, "2026-11-20")
+        assert unpushed(street, "Vehicle", spend=spend) == ("A car is passing by.", 0)
+        assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=lambda cfg, files: tech, spend=spend) == "An adult is working on equipment or wiring."
+        warning = "Descriptions have stopped until tomorrow: today's limit of 2 is used up. Street used the most (1)."
+        assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=fail, spend=spend) == f"Person detected. {warning}"
+        assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=fail, spend=spend) == "Person detected."
+        assert unpushed(street, "Vehicle", spend=spend) == ("", 0)
+        assert unpushed(street, "Vehicle", spend=budget(f"{d}/count", 2, "2026-11-21")) == ("A car is passing by.", 0)
+        assert unpushed(street, "Vehicle", spend=budget(f"{d}/other", 0, "2026-11-20")) == (warning.replace("of 2", "of 0").replace("(1)", "(0)"), 3)
+
     # One picture is a snapshot; several are footage, and the model is told they are in order.
     assert questions(CAMERAS[door], ["a.jpg"])[-1] == CAMERAS[door]["scene"]
     assert questions(CAMERAS[crawl], ["a.jpg", "b.jpg"])[-1].endswith(" Images are in time order.")

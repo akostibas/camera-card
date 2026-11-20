@@ -22,6 +22,12 @@ def questions(cfg, files):
     if cfg.get("animals_list"):
         args += ["--yesno", "animal=Is an animal visible in any image?",
                  "--choice", "kind=What kind of animal is it?:" + ",".join(cfg["animals_list"])]
+    if cfg.get("vehicles_list"):
+        args += ["--yesno", "vmove=Is a vehicle of any kind moving at any point in these images?",
+                 "--choice", "vkind=What kind of vehicle is the one that moves?:"
+                             + ",".join(cfg["vehicles_list"]) + ",other,no vehicle moves"]
+        for i, act in enumerate(cfg.get("vehicle_actions_list", []), 1):
+            args += ["--yesno", f"vact{i}=Is a vehicle {act} at any point in these images?"]
     if cfg.get("car_names"):
         args += [
             "--yesno", "first=In the first image, is a car inside the garage itself, under its roof?",
@@ -63,24 +69,40 @@ def _who(a, t):
     return ("Someone" if one else f"{n} people"), one
 
 
-def _people(cfg, a, t):
-    who, one = _who(a, t)
-    be = "is" if one else "are"
-    acts = cfg["actions_list"]
+def _doing(cfg, acts, key, a, t):
+    """What they are doing, as it reads after 'is'; '' when not even the generic last entry is true."""
     floor = cfg.get("action_min", {})
     # each activity is its own yes/no, so two can be true at once; the last entry is the generic fallback
-    seen = [(a[f"act{i}"]["confidence"], i, act) for i, act in enumerate(acts[:-1], 1)
-            if a[f"act{i}"]["answer"] == "yes" and a[f"act{i}"]["confidence"] >= floor.get(act, 0)]
+    seen = [(a[f"{key}{i}"]["confidence"], i, act) for i, act in enumerate(acts[:-1], 1)
+            if a[f"{key}{i}"]["answer"] == "yes" and a[f"{key}{i}"]["confidence"] >= floor.get(act, 0)]
     top = sorted(seen, key=lambda s: s[0], reverse=True)
     # the most confident ones, said in the order they'd happen
     plain = sorted([s for s in top if s[0] >= t["act_sure"]][:cfg.get("max_actions", 2)], key=lambda s: s[1])
     if plain:
-        return f"{who} {be} {' and '.join(s[2] for s in plain)}."
+        return " and ".join(s[2] for s in plain)
     if top:
-        return f"{who} {be} maybe {top[0][2]}."
-    if a[f"act{len(acts)}"]["answer"] == "yes":
-        return f"{who} {be} {acts[-1]}."
+        return f"maybe {top[0][2]}"
+    return acts[-1] if a[f"{key}{len(acts)}"]["answer"] == "yes" else ""
+
+
+def _people(cfg, a, t):
+    who, one = _who(a, t)
+    doing = _doing(cfg, cfg["actions_list"], "act", a, t)
+    if doing:
+        return f"{who} {'is' if one else 'are'} {doing}."
     return f"{who} {'was' if one else 'were'} spotted."
+
+
+def _vehicle(cfg, a, t):
+    """'A van is parking at the near curb.' Only a vehicle that moves: parked ones are always in view."""
+    if a["vmove"]["answer"] != "yes" or a["vmove"]["confidence"] < t["sure"]:
+        return ""
+    k = a["vkind"]
+    kind = k["choice"] if k["choice"] in cfg["vehicles_list"] and k["confidence"] >= t["sure"] else "vehicle"
+    acts = cfg.get("vehicle_actions_list")
+    doing = _doing(cfg, acts, "vact", a, t) if acts else ""
+    lead = f"{'An' if kind[0] in 'aeio' else 'A'} {kind}"
+    return f"{lead} is {doing}." if doing else f"{lead} was spotted."
 
 
 def _animal(a, t):
@@ -117,6 +139,10 @@ def message(cfg, t, answers, trigger):
             parts.append(_people(cfg, a, t))
         if cfg.get("animals_list") and a["animal"]["answer"] == "yes" and a["animal"]["confidence"] >= t["sure"]:
             parts.append(_animal(a, t))
+        if cfg.get("vehicles_list"):
+            vehicle = _vehicle(cfg, a, t)
+            if vehicle:
+                parts.append(vehicle)
         if cfg.get("car_names"):
             car = _car(cfg, a, t, bool(parts))
             if car:

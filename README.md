@@ -7,7 +7,13 @@ one-tap playback, live view, and a camera grid. Start with the [product intent](
 what a vision model sees in a camera's pictures. Home Assistant runs
 `python3 alerts/describe.py SETTINGS.yaml CAMERA TRIGGER PICTURE...` and sends what it prints;
 `alerts/example.yaml` shows a household's settings. Each run with pictures is one paid model
-call. `uv run alerts/test_message.py` checks the wording rules and costs nothing.
+call, up to the settings' `daily_limit`. `uv run alerts/test_message.py` checks the wording rules
+and costs nothing.
+
+An event nobody is alerted about can still be described so the card can show it: the same
+command with `--unpushed` first prints a sentence only when the camera's `describe` setting
+covers the event, and nothing otherwise. Exit status 3 means the day's limit was just reached
+and the printed line is the warning to send.
 
 It needs our patched copy of Home Assistant's Reolink integration (not in this repo yet), which
 serves `/api/reolink/recordings`, `/api/reolink/still` and `/api/reolink/play`, and a tagged release
