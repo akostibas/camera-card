@@ -1,5 +1,5 @@
 // Camera card for Home Assistant: recent recordings from our Reolink NVR as a scrolling list, with
-// one-tap playback, live view, and a camera grid. Data comes from the family-infra Reolink override
+// one-tap playback, live view, and a camera grid. Data comes from our patched Reolink integration
 // (/api/reolink/recordings, /still, /play). Ported from proto/charlie3.html.
 // Releases are served from /local/camera-card/vX.Y.Z[-rcN]/, so the URL is the version stamp.
 const VERSION = new URL(import.meta.url).pathname.match(/\/(v\d+\.\d+\.\d+(?:-rc\d+)?)\//)?.[1] ?? 'dev';

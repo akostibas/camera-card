@@ -1,14 +1,17 @@
 #!/bin/sh
-# Put the committed card on cherry as a release candidate: tag vX.Y.Z-rcN, push the tag, and have
-# family-infra install it. cherry's /local is cached for a month, so every test build needs its own URL.
+# Put the committed card on the Home Assistant host as a release candidate: tag vX.Y.Z-rcN, push the tag,
+# and have the deploy repo install it. /local is cached for a month, so every test build needs its own URL.
 # Usage: bin/dev-push [vX.Y.Z]   (default: the next minor after the latest release)
-# The next routine family-infra apply puts cherry back on its committed pin.
+# The next routine deploy puts the host back on its committed pin.
+# Public repo: where to deploy lives in .dev-push.env (gitignored), never in this file.
 set -eu
 cd "$(dirname "$0")/.."
-infra_dir=${FAMILY_INFRA:-$HOME/LocalDocs/family-infra}
+[ -f .dev-push.env ] && . ./.dev-push.env
+: "${INFRA_DIR:?dev-push: put INFRA_DIR=<checkout of the repo that deploys the card> in .dev-push.env}"
+: "${HA_HOST:?dev-push: put HA_HOST=<name the deploy repo knows the Home Assistant host by> in .dev-push.env}"
 
 if ! git diff --quiet HEAD; then echo "dev-push: uncommitted changes; commit them first (the RC is built from a tag)" >&2; exit 1; fi
-[ -d "$infra_dir" ] || { echo "dev-push: no family-infra checkout at $infra_dir (set FAMILY_INFRA)" >&2; exit 1; }
+[ -d "$INFRA_DIR" ] || { echo "dev-push: no checkout at INFRA_DIR=$INFRA_DIR (fix .dev-push.env)" >&2; exit 1; }
 node --check card/camera-card.js
 
 git fetch -q --tags origin
@@ -22,7 +25,7 @@ else
   git tag -a "$tag" -m "Release candidate $tag"
 fi
 git push -q origin "$tag"
-cd "$infra_dir"
-# mise: family-infra pins its own Go, and the current infra build lives under that toolchain
-mise exec -- infra apply ansible --host cherry --tags camera-card --yes -- -e camera_card_version="$tag"
-echo "cherry now serves $tag; Home Assistant restarts (~1 min), then reload the dashboard"
+cd "$INFRA_DIR"
+# mise: the deploy repo pins its own Go, and the current infra build lives under that toolchain
+mise exec -- infra apply ansible --host "$HA_HOST" --tags camera-card --yes -- -e camera_card_version="$tag"
+echo "$HA_HOST now serves $tag; Home Assistant restarts (~1 min), then reload the dashboard"

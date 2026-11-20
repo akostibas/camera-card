@@ -6,7 +6,7 @@ backward. It names what we value, not how to deliver it.
 **Who and why:** our household, usually on an iPhone (Safari or the Home
 Assistant app), sometimes on a desktop. The question is "what happened around
 the house, and what's happening now?" It replaces our fork of Advanced Camera
-Card (family-infra #299).
+Card.
 
 ## Use cases
 
@@ -78,7 +78,7 @@ integration, so a use case blocked by one is a reason to weigh that work, not
 a dead end.
 
 - Recordings reach the card only through Home Assistant, via our patched
-  Reolink integration in family-infra. Fetching, caching, and detection tags
+  Reolink integration, which lives outside this repo. Fetching, caching, and detection tags
   live there.
 - Recordings arrive in pieces of at most 5 minutes, because the integration
   asks the NVR for them in 5-minute slices; longer activity is several
@@ -90,4 +90,4 @@ a dead end.
 - A still picture from any moment of a recording can be fetched from the NVR
   in a fraction of a second (640×480), but nothing picks the moment that
   shows the action.
-- family-infra deploys the card from a pinned release.
+- The card is deployed from a pinned release.
