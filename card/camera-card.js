@@ -90,7 +90,8 @@ svg.f{fill:currentColor;stroke:none}
 .sw b{color:#fff;position:absolute;right:3px;bottom:2px;font-size:10px;font-weight:600;background:#0009;border-radius:3px;padding:0 3px;font-variant-numeric:tabular-nums}
 .tx{flex:1;min-width:0}
 .t1{display:flex;align-items:center;gap:5px;font-weight:600;font-size:15px}
-.t1 svg{width:15px;height:15px;color:var(--mut)}
+.t1 svg{flex:none;width:15px;height:15px;color:var(--mut)}
+.t1 .sd{min-width:0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .t1 .cn{font-weight:400;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .t2{font-size:13px;color:var(--mut);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chev{color:var(--mut);transition:transform .2s}
@@ -165,6 +166,8 @@ const len = (c) => (c.end - c.start) / 1000;
 const KN = { doorbell: 'Rang the bell', person: 'Person', vehicle: 'Vehicle', animal: 'Animal' };
 const ordered = (tags) => ['doorbell', 'person', 'vehicle', 'animal'].filter((t) => tags.includes(t));
 const kind = (tags, sched) => [sched && 'Scheduled', ...ordered(tags).map((t) => KN[t])].filter(Boolean).join(' · ') || 'Motion';
+// What an alert said about it, when one did; else what the NVR tagged it.
+const label = (c) => c.said.join(' ') || kind(c.tags, c.sched);
 const icons = (c) => (c.sched ? svg('clock') : '') + (c.tags.length ? ordered(c.tags).map((t) => svg(t)).join('') : c.sched ? '' : svg('motion'));
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
@@ -190,7 +193,7 @@ function mount(host, config) {
   const camDot = (ch) => PALETTE[S.cams.findIndex((c) => c.ch === ch) % PALETTE.length];
 
   // ---- data
-  const toRec = (r) => ({ id: r.id, cam: r.ch, start: Date.parse(r.start), end: Date.parse(r.end), tags: [...r.tags].sort(), untagged: r.untagged });
+  const toRec = (r) => ({ id: r.id, cam: r.ch, start: Date.parse(r.start), end: Date.parse(r.end), tags: [...r.tags].sort(), untagged: r.untagged, said: r.said || [] });
   async function fetchDays(newest, oldest) { // day indexes, inclusive
     const j = await api(`reolink/recordings?from=${iso(dayStart(oldest))}&to=${iso(dayStart(newest))}`);
     return j;
@@ -236,6 +239,7 @@ function mount(host, config) {
       if (e && e.fk === fk && c.start - e.end <= 2000 && (!sched || c.tags.join() === e.tags.join())) {
         if (c.end > e.end) { e.end = c.end; e.id = e.id.replace(/[^|]+$/, f[6]); }
         if (!sched) e.tags = [...new Set([...e.tags, ...c.tags])].sort();
+        e.said = [...new Set([...e.said, ...c.said])];
       } else {
         if (e && e.fk !== fk && e.end - e.start < 10000 && c.start <= e.end + 2000) e.drop = true; // ... or just before it
         out.push(last[c.cam] = { ...c, fk, sched, key: `${c.cam}:${c.start}` });
@@ -297,10 +301,11 @@ function mount(host, config) {
   const stillHTML = (c, badge, cls = '') => `<span class="sw ${cls}" data-still="${stillKey(c)}"><b>${badge}</b></span>`;
   function rowHTML(c) {
     const camName = S.pick.size !== 1 ? `<span class="cn"><span class="cd" style="background:${camDot(c.cam)}"></span>${esc(cam[c.cam].short)}</span>` : '';
+    const said = c.said.length; // a sentence gets the whole line: the camera's name moves to the line below
     const sub = [len(c) >= 300 ? `${hm(c.start)}–${hm(c.end)}` : hm(c.start), ago(c.start)].filter(Boolean).join(' · ');
-    return `<button class="row" data-play="${c.key}" data-t="${c.start}" aria-label="${kind(c.tags, c.sched)} ${esc(cam[c.cam].name)} ${hm(c.start)}">
+    return `<button class="row" data-play="${c.key}" data-t="${c.start}" aria-label="${esc(label(c))} ${esc(cam[c.cam].name)} ${hm(c.start)}">
       ${stillHTML(c, short(len(c)))}
-      <span class="tx"><span class="t1">${icons(c)}${kind(c.tags, c.sched)}${camName}</span><span class="t2">${sub}</span></span></button>`;
+      <span class="tx"><span class="t1">${icons(c)}<span class="sd">${esc(label(c))}</span>${said ? '' : camName}</span><span class="t2">${said && camName ? camName + ' · ' : ''}${sub}</span></span></button>`;
   }
   function burstHTML(r) {
     const first = r[0], lastC = r[r.length - 1], key = first.key;
@@ -582,7 +587,7 @@ function mount(host, config) {
     if (!isClip && liveImg.dataset.cam !== String(ch)) { liveImg.dataset.cam = ch; liveImg.removeAttribute('src'); delete liveImg.dataset.busy; loadPic(liveImg, picture(ch)); }
     if (!isClip) drawStream(ch);
     setText($('#cap'), isClip ? (v.status || '') : picture(ch) ? '' : 'No live view for this camera');
-    setText($('#vcam'), isClip ? `${cam[ch].name} · ${kind(c.tags, c.sched)} · ${when(c.start)}` : cam[ch].name);
+    setText($('#vcam'), isClip ? `${cam[ch].name} · ${label(c)} · ${when(c.start)}` : cam[ch].name);
     setText($('#vbadge'), isClip ? hms(c.start + v.t * 1000) : '');
     $('#bspeed').hidden = !isClip;
     $('#blive').classList.toggle('red', !isClip); // red: watching live; grey: tap to go live
