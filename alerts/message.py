@@ -23,12 +23,14 @@ def questions(cfg, files):
         args += ["--yesno", "animal=Is an animal visible in any image?",
                  "--choice", "kind=What kind of animal is it?:" + ",".join(cfg["animals_list"])]
     if cfg.get("vehicles_list"):
+        vacts = cfg.get("vehicle_actions_list", [])
+        # the last activity is what ordinary traffic does: the kind is asked of the vehicle that stands out
+        which = f"is doing something other than {vacts[-1]}" if vacts else "moves"
         args += ["--yesno", "vmove=Is a vehicle of any kind moving at any point in these images?",
-                 "--choice", "vkind=What kind of vehicle is the one that moves?:"
-                             + ",".join(cfg["vehicles_list"]) + ",other,no vehicle moves"]
-        for i, act in enumerate(cfg.get("vehicle_actions_list", []), 1):
-            # "the vehicle that moves": asked about "a vehicle", parked cars count as parking at the curb
-            args += ["--yesno", f"vact{i}=Is the vehicle that moves {act} at any point in these images?"]
+                 "--choice", f"vkind=What kind of vehicle {which}?:" + ",".join(cfg["vehicles_list"]) + ",other,no such vehicle"]
+        for i, act in enumerate(vacts, 1):
+            # "that moves": asked about "a vehicle", cars already parked count as parking at the curb
+            args += ["--yesno", f"vact{i}=Is a vehicle that moves {act} at any point in these images?"]
     if cfg.get("car_names"):
         args += [
             "--yesno", "first=In the first image, is a car inside the garage itself, under its roof?",
@@ -70,8 +72,11 @@ def _who(a, t):
     return ("Someone" if one else f"{n} people"), one
 
 
-def _doing(cfg, acts, key, a, t, most):
-    """What they are doing (at most `most` things), as it reads after 'is'; '' when not even the generic last entry is true."""
+def _doing(cfg, acts, key, a, t, most, generic=True):
+    """What they are doing (at most `most` things), as it reads after 'is'; '' when nothing is worth saying.
+
+    The last entry is the generic fallback, said (if `generic`) when nothing more specific is true.
+    """
     floor = cfg.get("action_min", {})
     # each activity is its own yes/no, so two can be true at once; the last entry is the generic fallback
     seen = [(a[f"{key}{i}"]["confidence"], i, act) for i, act in enumerate(acts[:-1], 1)
@@ -83,7 +88,7 @@ def _doing(cfg, acts, key, a, t, most):
         return " and ".join(s[2] for s in plain)
     if top:
         return f"maybe {top[0][2]}"
-    return acts[-1] if a[f"{key}{len(acts)}"]["answer"] == "yes" else ""
+    return acts[-1] if generic and a[f"{key}{len(acts)}"]["answer"] == "yes" else ""
 
 
 def _people(cfg, a, t):
@@ -95,15 +100,18 @@ def _people(cfg, a, t):
 
 
 def _vehicle(cfg, a, t):
-    """'A van is parking at the near curb.' Only a vehicle that moves: parked ones are always in view."""
+    """'A van is parking at the near curb.', or '' for ordinary traffic and for vehicles that never move."""
     if a["vmove"]["answer"] != "yes" or a["vmove"]["confidence"] < t["sure"]:
         return ""
     k = a["vkind"]
     kind = k["choice"] if k["choice"] in cfg["vehicles_list"] and k["confidence"] >= t["sure"] else "vehicle"
-    acts = cfg.get("vehicle_actions_list")
-    doing = _doing(cfg, acts, "vact", a, t, 1) if acts else ""  # one vehicle does one thing
     lead = f"{'An' if kind[0] in 'aeio' else 'A'} {kind}"
-    return f"{lead} is {doing}." if doing else f"{lead} was spotted."
+    acts = cfg.get("vehicle_actions_list")
+    if not acts:
+        return f"{lead} was spotted."
+    # one vehicle does one thing, and the generic last entry (traffic going past) is not news
+    doing = _doing(cfg, acts, "vact", a, t, 1, generic=False)
+    return f"{lead} is {doing}." if doing else ""
 
 
 def _animal(a, t):

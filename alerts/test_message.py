@@ -109,11 +109,16 @@ def demo():
 
     def traffic(kind, sure=0.9, moving=("yes", 0.9), **yes):
         return {**nobody, "vmove": q(*moving), "vkind": q(kind, sure), **doing(street, "vact", **yes)}
-    assert render(street, traffic("pickup truck", passing_by=0.9), "Vehicle") == "A pickup truck is passing by."
+    # Traffic going past is never news.
+    assert render(street, traffic("pickup truck", passing_by=0.9), "Vehicle") == "Vehicle detected, but it looks like a false alarm."
+    vkind = next(x for x in questions(CAMERAS[street], ["a.jpg"]) if x.startswith("vkind="))
+    assert vkind.startswith("vkind=What kind of vehicle is doing something other than passing by?:car,")
     assert render(street, traffic("trash truck", collecting_the_trash=0.8, passing_by=0.9), "Vehicle") == "A trash truck is collecting the trash."
     assert render(street, traffic("van", 0.3, parking_at_the_near_curb=0.7), "Vehicle") == "A vehicle is parking at the near curb."
     assert render(street, traffic("other", pulling_away_from_the_far_curb=0.5), "Vehicle") == "A vehicle is maybe pulling away from the far curb."
-    assert render(street, traffic("car"), "Vehicle") == "A car was spotted."
+    assert render(street, traffic("car"), "Vehicle") == "Vehicle detected, but it looks like a false alarm."
+    no_list = {k: v for k, v in CAMERAS[street].items() if k != "vehicle_actions_list"}
+    assert message(no_list, T, traffic("car"), "Vehicle") == "A car was spotted."
     # One vehicle does one thing: the surest, however many the model says yes to.
     both_curbs = traffic("car", parking_at_the_near_curb=0.76, parking_at_the_far_curb=0.69, passing_by=0.74)
     assert render(street, both_curbs, "Vehicle") == "A car is parking at the near curb."
@@ -139,30 +144,30 @@ def demo():
     describe(EXAMPLE, crawl, "Person", [f"{i}.jpg" for i in range(75)], ask=lambda cfg, files: seen.extend(files) or tech)
     assert len(seen) == 15 and seen[:2] == ["0.jpg", "5.jpg"]
     # Not pushed: described only at the camera's level, and only kept when there is something to say.
-    passing = traffic("car", passing_by=0.9)
+    passing = traffic("car", parking_at_the_near_curb=0.9)
 
     def unpushed(camera, trigger, answers=passing, files=("a.jpg",), **kw):
         return describe_unpushed(EXAMPLE, camera, trigger, list(files), ask=lambda cfg, files: answers, **kw)
-    assert unpushed(street, "Vehicle") == ("A car is passing by.", 0)
+    assert unpushed(street, "Vehicle") == ("A car is parking at the near curb.", 0)
     assert unpushed(street, "Motion") == ("", 0), "event level leaves plain motion alone"
     assert unpushed(crawl, "Animal", pest) == ("", 0), "cameras describe on push unless told otherwise"
     assert unpushed(street, "Vehicle", files=()) == ("", 0)
     assert unpushed(street, "Vehicle", still) == ("Vehicle detected, but it looks like a false alarm.", 0)
     assert describe_unpushed(EXAMPLE, street, "Vehicle", ["a.jpg"], ask=fail) == ("", 0), "plain wording is not worth keeping"
     motion = {**EXAMPLE, "cameras": {street: {**CAMERAS[street], "describe": "motion"}}}
-    assert describe_unpushed(motion, street, "Motion", ["a.jpg"], ask=lambda cfg, files: passing) == ("A car is passing by.", 0)
+    assert describe_unpushed(motion, street, "Motion", ["a.jpg"], ask=lambda cfg, files: passing) == ("A car is parking at the near curb.", 0)
 
     # The day's limit: the first call refused carries the warning, later ones are just plain, tomorrow starts over.
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         spend = budget(f"{d}/count", 2, "2026-11-20")
-        assert unpushed(street, "Vehicle", spend=spend) == ("A car is passing by.", 0)
+        assert unpushed(street, "Vehicle", spend=spend) == ("A car is parking at the near curb.", 0)
         assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=lambda cfg, files: tech, spend=spend) == "An adult is working on equipment or wiring."
         warning = "Descriptions have stopped until tomorrow: today's limit of 2 is used up. Street used the most (1)."
         assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=fail, spend=spend) == f"Person detected. {warning}"
         assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=fail, spend=spend) == "Person detected."
         assert unpushed(street, "Vehicle", spend=spend) == ("", 0)
-        assert unpushed(street, "Vehicle", spend=budget(f"{d}/count", 2, "2026-11-21")) == ("A car is passing by.", 0)
+        assert unpushed(street, "Vehicle", spend=budget(f"{d}/count", 2, "2026-11-21")) == ("A car is parking at the near curb.", 0)
         assert unpushed(street, "Vehicle", spend=budget(f"{d}/other", 0, "2026-11-20")) == (warning.replace("of 2", "of 0").replace("(1)", "(0)"), 3)
 
     # One picture is a snapshot; several are footage, and the model is told they are in order.
