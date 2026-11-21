@@ -10,6 +10,10 @@ thresholds:
   car_sure: 0.6     # which car, and that it is coming or going; below this "a car may be"
   false_alarm: 0.8  # that nobody is there, said as "looks like a false alarm"
 
+# The most paid descriptions in one day, all cameras together. Once it is used up, alerts go out in
+# plain wording until tomorrow, and the first one refused says so.
+daily_limit: 500
+
 # Per camera:
 #   scene          one-line description of the view, sent with the pictures
 #   actions_list   ask who is there and what they are doing. Entries must read after "is", in the
@@ -17,9 +21,18 @@ thresholds:
 #   max_actions    how many activities one alert may report (default 2)
 #   action_min     {activity: confidence} for activities that need more than a bare yes
 #   animals_list   ask whether there is an animal and what kind
+#   vehicles_list  ask whether a vehicle is moving and what kind (parked ones are ignored)
+#   vehicle_actions_list   ask what a vehicle is doing; one is reported. The last entry is what ordinary
+#                  traffic does and is never reported. Without this list every moving vehicle is
+#                  reported as "spotted"
 #   car_names      ask whether a car drove in or out, and name it by shade: {dark: ..., light: ...}
 #   door_check     ask whether the garage door was left open
 #   fallback       what to say when the model can't be asked (default "<what the camera detected> detected")
+#   describe       which events get described: push (default: only what is sent to the phone), event
+#                  (also every person, vehicle, animal or doorbell detection that is not pushed), or
+#                  motion (also motion the camera recognised nothing in). Each one costs a model call
+#
+# One camera can have two entries, e.g. a doorbell that alerts when rung and also watches the street.
 cameras:
   doorbell:
     scene: Doorbell camera looking out from the front door.
@@ -56,6 +69,27 @@ cameras:
       - going into the shed
       - leaving through the gate
       - standing or working in the yard
+
+  street:
+    scene: >-
+      Camera by a front door, looking across the front yard at the street. The near curb is on
+      this side of the street and the far curb is across it. Vehicles are usually parked at both.
+    describe: event
+    actions_list:
+      - getting out of a car
+      - walking a dog
+      - smoking
+      - getting into a car
+      - walking by
+    action_min: {smoking: 0.8}  # a small detail at this distance
+    vehicles_list: [car, pickup truck, van, motorcycle, bicycle, trash truck]
+    vehicle_actions_list:
+      - parking at the near curb
+      - parking at the far curb
+      - collecting the trash
+      - pulling away from the near curb
+      - pulling away from the far curb
+      - passing by
 
   crawl_space:
     scene: Security camera in a dark crawl space under a house, often in infrared black and white.
