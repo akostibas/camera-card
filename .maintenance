@@ -1,0 +1,3 @@
+# id | cadence | last done | what to run   (format: the header of ~/bin/maintenance)
+# card/hls.min.js is a copy of hls.js (Apache-2.0), the full build: the light one can't play 4K clips.
+hls-js | 90d | 2026-11-21 | npm view hls.js version; if newer than 1.6.13: replace card/hls.min.js from cdn.jsdelivr.net/npm/hls.js@X/dist/hls.min.js, play a 4K clip and a still-downloading clip in Chrome, and update the version in this line

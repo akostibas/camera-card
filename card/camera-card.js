@@ -471,18 +471,37 @@ function mount(host, config) {
   $('#bnext').innerHTML = svg('next');
   const picture = (ch) => { const e = cam[ch].entity; return e && host.hass.states[e]?.attributes.entity_picture; };
 
+  // Chrome's own HLS player takes a still-downloading clip for a live broadcast and jumps around in it,
+  // so only Apple's browser engine (which has no userAgentData) plays clips itself; the rest use hls.js.
+  const nativeHls = vid.canPlayType('application/vnd.apple.mpegurl') && !navigator.userAgentData;
+  let hlsLib, hls; // the library, fetched on the first clip; the clip it is playing
+  const loadHls = () => hlsLib ??= new Promise((ok, no) => {
+    const s = document.createElement('script');
+    s.src = new URL('hls.min.js', import.meta.url);
+    s.onload = () => ok(window.Hls); s.onerror = () => { hlsLib = null; no(new Error('player library missing')); };
+    document.head.append(s);
+  });
+  function unload() { hls?.destroy(); hls = null; vid.removeAttribute('src'); vid.load(); }
+
   async function playClip(c) {
     if (!c) return;
     const my = ++S.playSeq;
     S.view = { mode: 'clip', clip: c, t: 0, status: 'Loading…' };
-    vid.removeAttribute('src'); vid.load();
+    unload();
     draw(); markPlaying(true);
     try {
       const { url } = await api('reolink/play?id=' + encodeURIComponent(c.id));
       if (my !== S.playSeq) return;
       // iPhone opens a still-downloading clip near its newest part, ignoring the playlist's start.
       vid.addEventListener('playing', () => { if (my === S.playSeq && vid.currentTime > 1) vid.currentTime = vid.seekable.length ? vid.seekable.start(0) : 0; }, { once: true });
-      vid.src = url;
+      if (nativeHls) vid.src = url;
+      else {
+        const Hls = await loadHls();
+        if (my !== S.playSeq) return;
+        hls = new Hls();
+        hls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal && my === S.playSeq) { S.view.status = "Couldn't play this recording"; draw(); } });
+        hls.loadSource(url); hls.attachMedia(vid);
+      }
       vid.muted = S.muted && full !== vid;
       vid.playbackRate = S.speed;
       await vid.play();
@@ -495,8 +514,8 @@ function mount(host, config) {
   }
   function goLive(ch) {
     if (S.pick.size !== 1 || !S.pick.has(ch)) { S.pick = new Set([ch]); pressChips(); rebuild(); } // the chips show what's on screen
-    ++S.playSeq; vid.pause(); vid.removeAttribute('src'); vid.load(); S.view = { mode: 'live', cam: ch }; draw(); markPlaying(); }
-  function showGrid() { ++S.playSeq; vid.pause(); vid.removeAttribute('src'); vid.load(); S.view = { mode: 'grid' }; draw(); markPlaying(); }
+    ++S.playSeq; vid.pause(); unload(); S.view = { mode: 'live', cam: ch }; draw(); markPlaying(); }
+  function showGrid() { ++S.playSeq; vid.pause(); unload(); S.view = { mode: 'grid' }; draw(); markPlaying(); }
   function step(dir) {
     const v = S.view;
     if (v.mode === 'live') { const mine = S.all.filter((c) => c.cam === v.cam); return playClip(mine[mine.length - 1]); }
