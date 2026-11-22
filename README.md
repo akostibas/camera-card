@@ -15,9 +15,14 @@ command with `--unpushed` first prints a sentence only when the camera's `descri
 covers the event, and nothing otherwise. Exit status 3 means the day's limit was just reached
 and the printed line is the warning to send.
 
-It needs our patched copy of Home Assistant's Reolink integration (not in this repo yet), which
-serves `/api/reolink/recordings`, `/api/reolink/still` and `/api/reolink/play`, and a tagged release
-installed on the Home Assistant host.
+Both need `custom_components/reolink`: Home Assistant's own Reolink integration with our changes
+on top, which plays NVR clips, keeps the recording lists fast, and serves what the card and alerts
+ask for. Copy the folder into Home Assistant's `config/custom_components/` and restart; it takes the
+place of the built-in integration, and deleting it brings the built-in one back. It is a copy of one
+Home Assistant release (`"version"` in its `manifest.json`), so after upgrading Home Assistant run
+`bin/integration-refresh <new version>` to carry our changes onto that release. Where Home Assistant
+changed the same code we did, it stops and names the file to decide on. `bin/integration-refresh
+--diff` shows everything that is ours.
 
 ```yaml
 type: custom:camera-card

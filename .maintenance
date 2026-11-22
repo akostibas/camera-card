@@ -1,3 +1,5 @@
 # id | cadence | last done | what to run   (format: the header of ~/bin/maintenance)
 # card/hls.min.js is a copy of hls.js (Apache-2.0), the full build: the light one can't play 4K clips.
 hls-js | 90d | 2026-11-21 | npm view hls.js version; if newer than 1.6.13: replace card/hls.min.js from cdn.jsdelivr.net/npm/hls.js@X/dist/hls.min.js, play a 4K clip and a still-downloading clip in Chrome, and update the version in this line
+# custom_components/reolink is a copy of one Home Assistant release; a newer HA may have changed what it replaces.
+reolink-integration | 30d | 2026-11-21 | compare the Home Assistant version in use to "version" in custom_components/reolink/manifest.json; if HA is newer: bin/integration-refresh <that version>, drop any change of ours HA now covers, then deploy and play a clip
