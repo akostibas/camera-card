@@ -47,8 +47,7 @@ svg.f{fill:currentColor;stroke:none}
 #video video,#video #live,#video #liveimg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #video.max{position:fixed;inset:0;z-index:20}
 #cap{position:relative;max-width:84%;text-align:center;font-size:15px;color:var(--mut)}
-.vtop{position:absolute;z-index:1;color:#fff;left:10px;right:10px;top:8px;display:flex;justify-content:space-between;gap:8px;white-space:nowrap;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none}
-#vcam{min-width:0;overflow:hidden;text-overflow:ellipsis}
+#vcam{position:absolute;z-index:1;color:#fff;left:10px;bottom:8px;max-width:calc(100% - 20px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none}
 #ctl{flex:none;display:flex;flex-direction:column;padding:2px 10px 4px;background:var(--pg)}
 .pill{height:30px;min-width:44px;padding:0 10px;border-radius:15px;background:var(--cell2);font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px}
 .pill.red{background:var(--red);color:#fff}
@@ -112,7 +111,7 @@ const HTML = `
     <div id="grid"></div>
     <div id="single" hidden>
       <div id="video">
-        <div class="vtop"><span id="vcam"></span><span id="vbadge"></span></div>
+        <span id="vcam"></span>
         <video id="vid" playsinline muted hidden></video>
         <img id="liveimg" alt="" hidden>
         <div id="live"></div>
@@ -149,15 +148,27 @@ const HTML = `
   <div id="toast"></div>
 </div>`;
 
-// ---- time helpers (the phone's local time; the NVR is in the same timezone)
-const dayStart = (i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i); return d.getTime(); };
-const dayIndex = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return Math.round((dayStart(0) - d.getTime()) / DAYMS); };
-const iso = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-const fmt = (o) => new Intl.DateTimeFormat('en-US', o).format; // one formatter each: toLocale* builds one per call
-const hm = fmt({ hour: 'numeric', minute: '2-digit' }), hms = fmt({ hour: 'numeric', minute: '2-digit', second: '2-digit' });
-const wkS = fmt({ weekday: 'short' }), wkL = fmt({ weekday: 'long', month: 'short', day: 'numeric' }), md = fmt({ month: 'short', day: 'numeric' });
-const dayName = (i, short) => i === 0 ? 'Today' : i === 1 ? 'Yesterday' : (short ? wkS : wkL)(dayStart(i));
-const when = (t) => { const i = dayIndex(t); return (i < 7 ? dayName(i, true) : md(t)) + ' ' + hm(t); };
+// ---- time helpers: everything is the house's clock (Home Assistant's timezone, which the NVR keeps), not the phone's
+let TZ; // set at mount; unset falls back to the phone's zone
+const dtf = (o) => { let f; return () => f ??= new Intl.DateTimeFormat('en-US', { ...o, timeZone: TZ }); };
+const fmt = (o) => { const f = dtf(o); return (t) => f().format(t); }; // one formatter each: toLocale* builds one per call
+const partsF = dtf({ hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+// The house's wall clock at instant t, as if it were UTC: day arithmetic on it is plain division.
+const wall = (t) => { const p = {}; for (const { type, value } of partsF().formatToParts(t)) p[type] = +value; return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second); };
+const off = (t) => wall(t) - Math.floor(t / 1000) * 1000;
+const unwall = (w) => w - off(w - off(w)); // second pass: the first guess can land across a DST change
+const dayNo = (t) => Math.floor(wall(t) / DAYMS);
+const dayStart = (i) => unwall((dayNo(Date.now()) - i) * DAYMS);
+const dayIndex = (t) => dayNo(Date.now()) - dayNo(t);
+const iso = (t) => new Date(wall(t)).toISOString().slice(0, 10);
+const fromIso = (s) => unwall(Date.parse(s)); // house midnight of a YYYY-MM-DD
+const hm = fmt({ hour: 'numeric', minute: '2-digit' });
+const wkL = fmt({ weekday: 'long', month: 'short', day: 'numeric' }), wmd = fmt({ weekday: 'short', month: 'short', day: 'numeric' }), md = fmt({ month: 'short', day: 'numeric' });
+const zoneF = dtf({ timeZoneName: 'short' });
+// " PST" when the phone's clock reads differently from the house's at t; else nothing.
+const zone = (t) => off(t) === -new Date(t).getTimezoneOffset() * MIN ? '' : ' ' + zoneF().formatToParts(t).find((p) => p.type === 'timeZoneName').value;
+const at = (a, b) => hm(a) + (b ? '–' + hm(b) : '') + zone(a);
+const dayName = (i) => i === 0 ? 'Today' : i === 1 ? 'Yesterday' : wkL(dayStart(i));
 const errText = (e) => e?.body?.message || e?.message || e?.error || e?.status_code || String(e);
 const ago = (t) => { const m = (Date.now() - t) / MIN; return m < 1 ? 'just now' : m < 60 ? `${Math.floor(m)} min ago` : m < 360 ? `${Math.floor(m / 60)} hr ago` : ''; };
 const clock = (s) => { s = Math.max(0, Math.floor(s)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = String(s % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`; };
@@ -184,6 +195,7 @@ class CameraCard extends HTMLElement {
 }
 
 function mount(host, config) {
+  TZ = host.hass.config?.time_zone;
   const root = host.attachShadow({ mode: 'open' });
   root.innerHTML = `<style>${STYLE}</style>${HTML}`;
   const $ = (s) => root.querySelector(s);
@@ -223,7 +235,7 @@ function mount(host, config) {
       span.set(k, x ? [Math.min(x[0], c.start), Math.max(x[1], c.end)] : [c.start, c.end]);
     }
     // The NVR's file names don't say (reolink_aio can't parse ours), so judge by the file's shape.
-    const shape = (k) => { const [a, b] = span.get(k), d = new Date(a), past = d.getMinutes() * 60 + d.getSeconds(); return b - a >= 20 * MIN || past <= 15 || past >= 3585; };
+    const shape = (k) => { const [a, b] = span.get(k), past = wall(a) / 1000 % 3600; return b - a >= 20 * MIN || past <= 15 || past >= 3585; };
     // The NVR also splits a motion file on the hour: that continuation is part of the motion event.
     const alias = new Map(), prev = {};
     for (const [k, [a, b]] of [...span].sort((x, y) => x[1][0] - y[1][0])) {
@@ -302,8 +314,8 @@ function mount(host, config) {
   function rowHTML(c) {
     const camName = S.pick.size !== 1 ? `<span class="cn"><span class="cd" style="background:${camDot(c.cam)}"></span>${esc(cam[c.cam].short)}</span>` : '';
     const said = c.said.length; // a sentence gets the whole line: the camera's name moves to the line below
-    const sub = [len(c) >= 300 ? `${hm(c.start)}–${hm(c.end)}` : hm(c.start), ago(c.start)].filter(Boolean).join(' · ');
-    return `<button class="row" data-play="${c.key}" data-t="${c.start}" aria-label="${esc(label(c))} ${esc(cam[c.cam].name)} ${hm(c.start)}">
+    const sub = [at(c.start, len(c) >= 300 && c.end), ago(c.start)].filter(Boolean).join(' · ');
+    return `<button class="row" data-play="${c.key}" data-t="${c.start}" aria-label="${esc(label(c))} ${esc(cam[c.cam].name)} ${at(c.start)}">
       ${stillHTML(c, short(len(c)))}
       <span class="tx"><span class="t1">${icons(c)}<span class="sd">${esc(label(c))}</span>${said ? '' : camName}</span><span class="t2">${said && camName ? camName + ' · ' : ''}${sub}</span></span></button>`;
   }
@@ -315,7 +327,7 @@ function mount(host, config) {
       <button class="row grp" data-burst="${esc(key)}" data-t="${lastC.start}" aria-label="Burst of ${r.length} clips">
         ${stillHTML(lastC, r.length, 'stack')}
         <span class="tx"><span class="t1">${tags.length ? ordered(tags).map((t) => svg(t)).join('') : svg('motion')}${r.length} clips${S.pick.size !== 1 ? `<span class="cn">${esc(cam[first.cam].short)}</span>` : ''}</span>
-        <span class="t2">${hm(first.start)}–${hm(lastC.end)} · ${kind(tags, r.every((c) => c.sched))}</span></span>
+        <span class="t2">${at(first.start, lastC.end)} · ${kind(tags, r.every((c) => c.sched))}</span></span>
         ${svg('chev', 'chev')}</button>
       <div class="kids" ${open ? '' : 'hidden'}>${r.slice().reverse().map((c) => rowHTML(c)).join('')}</div></div>`;
   }
@@ -327,7 +339,7 @@ function mount(host, config) {
     const fut = i === 0 ? `<span class="fut" style="left:${(Date.now() - d.a) / DAYMS * 100}%"></span>` : '';
     return `<div class="rib" data-a="${d.a}" aria-label="Day timeline">${bars}${fut}</div><div class="hl"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>`;
   }
-  const hiddenOn = (i) => S.hiddenSched.filter((c) => c.start >= dayStart(i) && c.start < dayStart(i - 1)).length;
+  const hiddenOn = (i) => { const a = dayStart(i), b = dayStart(i - 1); return S.hiddenSched.filter((c) => c.start >= a && c.start < b).length; };
   function daySection(i, d = dayUnits(i)) {
     const el = document.createElement('section');
     el.dataset.day = i;
@@ -342,7 +354,7 @@ function mount(host, config) {
     if (!S.quiet) return;
     const q = S.quiet, el = document.createElement('div');
     el.className = 'quiet'; el.dataset.from = q.from; el.dataset.to = q.to;
-    const nm = (i) => new Date(dayStart(i)).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const nm = (i) => wmd(dayStart(i));
     el.textContent = `Nothing ${S.tags.size ? 'matching ' : ''}${q.from === q.to ? 'on ' + nm(q.from) : `from ${nm(q.to)} to ${nm(q.from)}`}`;
     if (q.untg) { const b = document.createElement('button'); b.className = 'untg'; b.dataset.untagged = ''; b.dataset.day = q.from; b.textContent = `+ ${q.untg} scheduled`; el.append(document.createElement('br'), b); }
     feed.insertBefore(el, more); S.quiet = null;
@@ -606,8 +618,7 @@ function mount(host, config) {
     if (!isClip && liveImg.dataset.cam !== String(ch)) { liveImg.dataset.cam = ch; liveImg.removeAttribute('src'); delete liveImg.dataset.busy; loadPic(liveImg, picture(ch)); }
     if (!isClip) drawStream(ch);
     setText($('#cap'), isClip ? (v.status || '') : picture(ch) ? '' : 'No live view for this camera');
-    setText($('#vcam'), isClip ? `${cam[ch].name} · ${label(c)} · ${when(c.start)}` : cam[ch].name);
-    setText($('#vbadge'), isClip ? hms(c.start + v.t * 1000) : '');
+    setText($('#vcam'), isClip ? `${cam[ch].name} · ${label(c)}` : cam[ch].name);
     $('#bspeed').hidden = !isClip;
     $('#blive').classList.toggle('red', !isClip); // red: watching live; grey: tap to go live
     $('#blive').setAttribute('aria-label', isClip ? 'Go live' : 'Live');
@@ -687,8 +698,7 @@ function mount(host, config) {
   root.querySelector('#filters [data-tag=doorbell]').insertAdjacentHTML('afterbegin', svg('doorbell'));
   dateEl.addEventListener('change', async () => {
     if (!dateEl.value) return;
-    const [y, m, d] = dateEl.value.split('-').map(Number);
-    const i = Math.min(S.days, Math.max(0, dayIndex(new Date(y, m - 1, d).getTime())));
+    const i = Math.min(S.days, Math.max(0, dayIndex(fromIso(dateEl.value))));
     await renderTo(i);
     jumpToDay(i);
   });
@@ -712,7 +722,7 @@ function mount(host, config) {
       };
     }
     S.cams = j.cameras;
-    const oldest = Math.min(...j.cameras.map((c) => c.oldest ? new Date(c.oldest + 'T00:00').getTime() : Date.now()));
+    const oldest = Math.min(...j.cameras.map((c) => c.oldest ? fromIso(c.oldest) : Date.now()));
     S.oldest = oldest; S.days = dayIndex(oldest); S.t0 = dayStart(0);
     for (const r of j.recordings) S.recs.set(r.id, toRec(r));
     S.loaded = 0;
