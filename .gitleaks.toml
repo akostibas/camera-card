@@ -1,0 +1,8 @@
+# The default rules, minus one false positive in Home Assistant's own code that we carry unchanged:
+# a Reolink command name (custom_components/reolink/switch.py) that looks like a key to generic-api-key.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Reolink API command name in stock Home Assistant code"
+regexes = ['''GetBuzzerAlarmV20''']

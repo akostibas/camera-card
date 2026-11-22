@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Move custom_components/reolink onto another Home Assistant release, keeping our changes.
+
+Usage: bin/integration-refresh VERSION   e.g. 2026.12.1, the release your Home Assistant runs
+       bin/integration-refresh --diff    show what we changed from the stock integration
+
+Three-way merge per file: the stock integration we copied (manifest.json "version"), the stock one
+in VERSION, and ours. A file left with conflict markers means HA changed code we also changed: if
+HA now does what our change did, take theirs; otherwise fix it up. Then deploy and try the card.
+"""
+import io
+import json
+import re
+import subprocess
+import sys
+import tempfile
+import urllib.request
+import zipfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+OURS = ROOT / "custom_components/reolink"
+PREFIX = "homeassistant/components/reolink/"
+
+
+def stock(version: str, dest: Path) -> Path:
+    """The stock integration as released: from the PyPI wheel, since translations aren't in HA's git."""
+    with urllib.request.urlopen(f"https://pypi.org/pypi/homeassistant/{version}/json") as r:
+        url = next(u["url"] for u in json.load(r)["urls"] if u["packagetype"] == "bdist_wheel")
+    print(f"fetching stock Home Assistant {version}", file=sys.stderr)
+    with urllib.request.urlopen(url) as r:
+        wheel = zipfile.ZipFile(io.BytesIO(r.read()))
+    for name in wheel.namelist():
+        rel = name.removeprefix(PREFIX)
+        # we ship English only
+        if rel == name or name.endswith("/") or (rel.startswith("translations/") and rel != "translations/en.json"):
+            continue
+        (dest / rel).parent.mkdir(parents=True, exist_ok=True)
+        (dest / rel).write_bytes(wheel.read(name))
+    set_version(dest / "manifest.json", version)
+    return dest
+
+
+def files(d: Path) -> set[str]:
+    return {str(p.relative_to(d)) for p in d.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+
+
+def set_version(manifest: Path, version: str) -> None:
+    """HA requires "version" in a custom integration's manifest; stock has none. Ours names the release copied."""
+    text = manifest.read_text().rstrip()
+    assert text.endswith("}") and '"version"' not in text, f"unexpected {manifest}"
+    manifest.write_text(f'{text[:-1].rstrip()},\n  "version": "{version}"\n}}\n')
+
+
+def main() -> int:
+    if len(sys.argv) != 2 or sys.argv[1] in ("-h", "--help"):
+        print(__doc__)
+        return 2
+    pinned = json.loads((OURS / "manifest.json").read_text())["version"]
+    branch = subprocess.run(
+        ["git", "-C", ROOT, "branch", "--show-current"], capture_output=True, text=True
+    ).stdout.strip()
+    print(f"branch {branch or 'detached'} in {ROOT}: the integration is a copy of Home Assistant {pinned}", file=sys.stderr)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        if sys.argv[1] == "--diff":
+            old = stock(pinned, Path(tmp) / "stock")
+            subprocess.run(["git", "diff", "--no-index", "--stat", "--patch", old, OURS])
+            return 0
+
+        new_version = sys.argv[1]
+        if not re.fullmatch(r"\d{4}\.\d+\.\d+", new_version):
+            print(f"refusing: {new_version!r} is not a Home Assistant release like 2026.12.1", file=sys.stderr)
+            return 1
+        if new_version == pinned:
+            print("nothing to do", file=sys.stderr)
+            return 0
+        dirty = subprocess.run(
+            ["git", "-C", ROOT, "status", "--porcelain", "--", OURS], capture_output=True, text=True
+        ).stdout
+        if dirty:
+            print(
+                "refusing: uncommitted changes in custom_components/; commit them first so the merge can be reviewed and undone",
+                file=sys.stderr,
+            )
+            return 1
+        old, new = stock(pinned, Path(tmp) / "old"), stock(new_version, Path(tmp) / "new")
+
+        was, now, mine = files(old), files(new), files(OURS)
+        conflicts = []
+        for rel in sorted(was | now | mine):
+            ours, o, n = OURS / rel, old / rel, new / rel
+            if rel in now and rel in mine and rel in was:
+                if subprocess.run(["git", "merge-file", "-q", ours, o, n]).returncode:
+                    conflicts.append(f"{rel}: HA and we changed the same lines (conflict markers in the file)")
+            elif rel in now and rel not in mine:
+                # in neither old stock nor ours: new upstream. In old stock but not ours: we deleted it, stays deleted.
+                if rel not in was:
+                    ours.parent.mkdir(parents=True, exist_ok=True)
+                    ours.write_bytes(n.read_bytes())
+                    print(f"  new in HA: {rel}", file=sys.stderr)
+            elif rel in now and ours.read_bytes() != n.read_bytes():
+                conflicts.append(f"{rel}: HA added a file with the name of one of ours")
+            elif rel in was and rel not in now and rel in mine:
+                if ours.read_bytes() == o.read_bytes():
+                    ours.unlink()
+                    print(f"  gone from HA: {rel}", file=sys.stderr)
+                else:
+                    conflicts.append(f"{rel}: HA deleted a file we changed (ours kept)")
+
+    print(f"the integration is now a copy of Home Assistant {new_version}; review with: git diff", file=sys.stderr)
+    if conflicts:
+        print("needs a decision before committing:", *conflicts, sep="\n  ", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
