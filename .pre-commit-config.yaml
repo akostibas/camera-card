@@ -23,3 +23,9 @@ repos:
         entry: uv run alerts/test_message.py
         files: ^alerts/
         pass_filenames: false
+    -   id: card-house-time
+        name: card shows house time
+        language: system
+        entry: node card/test_time.mjs
+        files: ^card/
+        pass_filenames: false
