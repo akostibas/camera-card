@@ -29,8 +29,11 @@ def _xml_time(block: str, tag: str) -> datetime:
     return datetime(*(int(re.search(rf"<{k}>(\d+)</{k}>", inner).group(1)) for k in ("year", "month", "day", "hour", "minute", "second")))
 
 
-async def find_file(bc, uid: str, ch: int, stream: str, start: datetime, end: datetime) -> tuple[str, str, datetime]:
-    """Native recording file (name, Id, end clamped to the file) that contains start; times are NVR-local."""
+async def find_file(bc, uid: str, ch: int, stream: str, start: datetime, end: datetime) -> tuple[str, str, datetime, datetime]:
+    """Native recording file (name, Id, start and end clamped to the file) for [start, end]; times are NVR-local.
+
+    The file containing start, else the first file starting inside the range.
+    """
     tpl = xmls.FileInfoListOpen.replace("mainStream", f"{stream}Stream")
     times = {f"{p}_{k}": getattr(t, k) for p, t in (("start", start), ("end", end)) for k in ("year", "month", "day", "hour", "minute", "second")}
     reply = await bc.send(cmd_id=14, channel=ch, body=tpl.format(channel=ch, uid=uid, **times))
@@ -40,17 +43,25 @@ async def find_file(bc, uid: str, ch: int, stream: str, start: datetime, end: da
     finally:
         await bc.send(cmd_id=16, channel=ch, body=close)
     seen = []  # for the error: what the NVR did have is how a miss gets diagnosed
+    later = None
     for block in re.findall(r"<FileInfo>(.*?)</FileInfo>", listing, re.S):
-        seen.append(f"{_xml_time(block, 'startTime'):%H:%M:%S}-{_xml_time(block, 'endTime'):%H:%M:%S}")
-        if _xml_time(block, "startTime") <= start < (file_end := _xml_time(block, "endTime")):
+        file_start, file_end = _xml_time(block, "startTime"), _xml_time(block, "endTime")
+        seen.append(f"{file_start:%H:%M:%S}-{file_end:%H:%M:%S}")
+        found = re.search(r"<name>(.*?)</name>", block).group(1), re.search(r"<Id>(.*?)</Id>", block).group(1)
+        if file_start <= start < file_end:
             # ponytail: a range crossing the hourly file boundary is cut short at it; stitch two cuts if that bites
-            return re.search(r"<name>(.*?)</name>", block).group(1), re.search(r"<Id>(.*?)</Id>", block).group(1), min(end, file_end)
+            return *found, start, min(end, file_end)
+        if later is None and start < file_start < end:
+            # the NVR starts recording 1-3s after the person sensor fires, so alerts ask from before the file
+            later = *found, file_start, min(end, file_end)
+    if later:
+        return later
     raise LookupError(f"no {stream}Stream recording on ch {ch} at {start} (files up to {end:%H:%M:%S}: {', '.join(seen) or 'none'})")
 
 
 async def stream_cut(bc, uid: str, ch: int, stream: str, start: datetime, end: datetime):
     """Yield the raw BcMedia stream for [start, end] in chunks, as the NVR sends them. Hold CUT_LOCK."""
-    name, file_id, end = await find_file(bc, uid, ch, stream, start, end)
+    name, file_id, start, end = await find_file(bc, uid, ch, stream, start, end)
     body = ('<?xml version="1.0" encoding="UTF-8" ?>\n<body>\n<FileInfoList version="1.1"><FileInfo>'
             f"<uid>{uid}</uid><channelId>{ch}</channelId><streamType>{stream}Stream</streamType>"
             f"<startTime>{_tm(start)}</startTime><endTime>{_tm(end)}</endTime>"
