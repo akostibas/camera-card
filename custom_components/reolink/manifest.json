@@ -26,5 +26,5 @@
   "loggers": ["reolink_aio"],
   "quality_scale": "platinum",
   "requirements": ["reolink-aio==0.23.0"],
-  "version": "2026.11.2"
+  "version": "2026.11.3"
 }
