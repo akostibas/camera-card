@@ -1,0 +1,12 @@
+# Settings for the work CLI. Remove a section to turn that part off.
+board:
+  planned_cap: 5
+  in_progress_cap: 3
+  open_issue_warning: 100
+
+# deploy:
+#   batch_after: "17:00"    # local time; before this, changes wait
+#   stale_catch_up: false   # true = deploy any time if nothing shipped yesterday or today
+#   last_shipped: bin/last-shipped   # prints "<unix seconds><tab><label>", nothing if never
+#   notices: ""             # optional command whose output is shown with the advice
+#   override_hint: ""       # optional, how to deploy anyway
