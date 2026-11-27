@@ -7,6 +7,7 @@
 
   bin/testdata import CAMERA RESPONSE.json [--video HLS_NAME]   copy a recording's pictures from the host
   bin/testdata note PATH --by WHO --for ISSUE < FIELDS.yaml      add a note to a picture or a recording
+  bin/testdata todo RECORDING --for ISSUE                        what in a recording still lacks a note for ISSUE
   bin/testdata list                                              recordings filed, and the space they use
 
 The library is testdata/ in the main checkout (gitignored: this repo is public and the pictures show
@@ -126,6 +127,16 @@ def cmd_note(a):
     print(f"{meta}: {len(d['notes'])} notes")
 
 
+def cmd_todo(a):
+    rec = Path(a.recording) if Path(a.recording).is_dir() else LIB / a.recording
+    if not (rec / "clip.yaml").exists():
+        die(f"no recording at {rec}")
+    has = lambda m: any(n.get("for") == getattr(a, "for") for n in load(m).get("notes", []))  # noqa: E731
+    left = [m.stem for m in sorted(rec.glob("k*.yaml")) if not has(m)]
+    left += ["(the recording itself)"] if not has(rec / "clip.yaml") else []
+    print(f"{len(left)} still need a note for {getattr(a, 'for')}: {' '.join(left)}" if left else "all noted")
+
+
 def cmd_list(_):
     for clip in sorted(LIB.glob("*/*/clip.yaml")):
         d = load(clip)
@@ -148,6 +159,10 @@ s.add_argument("path")
 s.add_argument("--by", required=True)
 s.add_argument("--for", required=True)
 s.set_defaults(fn=cmd_note)
+s = sub.add_parser("todo")
+s.add_argument("recording")
+s.add_argument("--for", required=True)
+s.set_defaults(fn=cmd_todo)
 sub.add_parser("list").set_defaults(fn=cmd_list)
 a = p.parse_args()
 a.fn(a)
