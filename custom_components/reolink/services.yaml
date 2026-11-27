@@ -110,3 +110,28 @@ keep_description:
       required: true
       selector:
         text:
+
+tuning_verdict:
+  fields:
+    channel:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 7
+    trigger:
+      required: true
+      selector:
+        text:
+    judge:
+      selector:
+        boolean:
+    person:
+      selector:
+        text:
+    vehicle:
+      selector:
+        text:
+    animal:
+      selector:
+        text:

@@ -41,6 +41,11 @@ def questions(cfg, files):
         ]
     if cfg.get("door_check"):
         args += ["--yesno", "door=In the last image, is the garage door open?"]
+    # auto-tuning (camera-card#3) judges every kind of trigger, whatever the camera reports on
+    if not cfg.get("animals_list"):
+        args += ["--yesno", "animal=Is an animal visible in any image?"]
+    if not cfg.get("vehicles_list"):
+        args += ["--yesno", "vmove=Is a vehicle of any kind moving at any point in these images?"]
     return args + [cfg["scene"] + (" Images are in time order." if len(files) > 1 else "")]
 
 
@@ -136,6 +141,20 @@ def _car(cfg, a, t, other_news):
     car = f"The {names[shade['choice']]}" if shade["choice"] in names and shade["confidence"] >= t["car_sure"] else "A car"
     sure = min(first["confidence"], last["confidence"], move["confidence"]) >= t["car_sure"]
     return f"{car} {'is' if sure else 'may be'} {way} the garage."
+
+
+def seen(answers, t):
+    """{'person'|'vehicle'|'animal': 'yes', 'no' or None (unsure)}, for auto-tuning (camera-card#3)."""
+    out = {}
+    for kind, key in (("person", "person"), ("vehicle", "vmove"), ("animal", "animal")):
+        a = (answers or {}).get(key) or {}
+        if a.get("answer") == "yes" and a["confidence"] >= t["sure"]:
+            out[kind] = "yes"
+        elif a.get("answer") == "no" and a["confidence"] >= t["false_alarm"]:
+            out[kind] = "no"
+        else:
+            out[kind] = None
+    return out
 
 
 def message(cfg, t, answers, trigger):

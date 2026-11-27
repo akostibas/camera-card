@@ -14,6 +14,25 @@ thresholds:
 # plain wording until tomorrow, and the first one refused says so.
 daily_limit: 500
 
+# Auto-tuning (the camera card's Tuning view, admins only). Each chosen kind starts at `start`%
+# sensitivity. A false alarm adds 1 to a bucket that drains `per_week` a week and `real_credit` per real
+# detection; one arriving with the bucket over `allow` lowers sensitivity by `step`, never below `floor`
+# (stopping there usually means something in view needs fixing instead). False alarms within `burst`
+# minutes count once. Done after `days` without a step down. Detections that don't alert cost an extra
+# Gemini call each: at most `cap` a day in all and `cap_each` per camera kind.
+# Read when tuning starts, so changes apply to the next run.
+tuning:
+  start: 100
+  step: 5
+  floor: 30
+  allow: 1
+  per_week: 1
+  real_credit: 0.05
+  burst: 15
+  days: 2
+  cap: 150
+  cap_each: 25
+
 # Per camera:
 #   scene          one-line description of the view, sent with the pictures
 #   actions_list   ask who is there and what they are doing. Entries must read after "is", in the
