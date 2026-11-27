@@ -1,10 +1,13 @@
 """Print the alert text for what a camera saw.
 
-  python3 describe.py [--unpushed] SETTINGS.yaml CAMERA TRIGGER [PICTURE...]
+  python3 describe.py [--unpushed] [--json] SETTINGS.yaml CAMERA TRIGGER [PICTURE...]
 
 TRIGGER is what the camera detected ("Person"). With pictures this makes ONE PAID model call
 (ask-gemini on PATH, GEMINI_API_KEY set) and lists the answers on stderr. With no pictures, or
 if the model fails or is slow, it prints the plain wording and costs nothing.
+
+--json prints {"text": ..., "seen": {"person"|"vehicle"|"animal": "yes"|"no"|null}} instead, so
+auto-tuning (camera-card#3) can tell a false alarm. seen is all null when the model wasn't asked.
 
 --unpushed is for an event nobody is being alerted about, described only so it can be shown
 later. It prints nothing unless the camera's `describe` setting covers the event and the model
@@ -22,7 +25,7 @@ from datetime import date
 
 import yaml
 
-from message import message, questions
+from message import message, questions, seen
 
 LEVELS = ("push", "event", "motion")  # each describes everything the one before it does
 
@@ -69,7 +72,7 @@ def budget(path, limit, today):
 
 
 def _describe(settings, camera, trigger, files, ask, spend):
-    """(the text, a warning that the day's limit was just reached or '')."""
+    """(the text, a warning that the day's limit was just reached or '', the model's answers or None)."""
     cfg, t = settings["cameras"][camera], settings["thresholds"]
     # at most 16 pictures, evenly spaced: keyframes come every 1-2s, so a minute of footage has up to 75
     files = files[::(len(files) + 15) // 16 or 1]
@@ -85,45 +88,48 @@ def _describe(settings, camera, trigger, files, ask, spend):
         answers = ask(cfg, files) if files else None
         for name, answer, confidence in named(cfg, answers or {}):
             print(f"  {name}: {answer} {confidence:.0%}", file=sys.stderr)
-        return message(cfg, t, answers, trigger), warning
+        return message(cfg, t, answers, trigger), warning, answers
     except Exception as err:  # whatever went wrong, the alert still goes out
         print(f"describe: {err!r}", file=sys.stderr)
-        return message(cfg, t, None, trigger), warning
+        return message(cfg, t, None, trigger), warning, None
 
 
 def describe(settings, camera, trigger, files, ask=ask, spend=None):
-    """The text of a pushed alert."""
-    return " ".join(filter(None, _describe(settings, camera, trigger, files, ask, spend)))
+    """(the text of a pushed alert, what the model saw)."""
+    text, warning, answers = _describe(settings, camera, trigger, files, ask, spend)
+    return " ".join(filter(None, (text, warning))), seen(answers, settings["thresholds"])
 
 
 def describe_unpushed(settings, camera, trigger, files, ask=ask, spend=None):
-    """(text, exit status) for an event nobody is alerted about: ('', 0) when there is nothing to keep."""
+    """(text, exit status, what the model saw) for an event nobody is alerted about: text '' when there is nothing to keep."""
     cfg = settings["cameras"][camera]
     level = cfg.get("describe", "push")
     if level not in LEVELS:
         raise ValueError(f"{camera}: describe must be one of {', '.join(LEVELS)}, not {level!r}")
     if level == "push" or (level == "event" and trigger == "Motion") or not files:
-        return "", 0
+        return "", 0, seen(None, settings["thresholds"])
     # the fallback is worded for the push ("Someone is at the door"); here the plain wording is never shown
     quiet = {**settings, "cameras": {camera: {k: v for k, v in cfg.items() if k != "fallback"}}}
-    text, warning = _describe(quiet, camera, trigger, files, ask, spend)
+    text, warning, answers = _describe(quiet, camera, trigger, files, ask, spend)
+    saw = seen(answers, settings["thresholds"])
     if warning:
-        return warning, 3
+        return warning, 3, saw
     plain = message(quiet["cameras"][camera], settings["thresholds"], None, trigger)
-    return ("" if text == plain else text), 0
+    return ("" if text == plain else text), 0, saw
 
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    unpushed = args[:1] == ["--unpushed"]
-    args = args[unpushed:]
+    unpushed, as_json = "--unpushed" in args[:2], "--json" in args[:2]
+    args = [a for a in args[:2] if a not in ("--unpushed", "--json")] + args[2:]
     if len(args) < 3:
         sys.exit(__doc__)
     with open(args[0]) as f:
         settings = yaml.safe_load(f)
     spend = budget(args[0] + ".count", settings.get("daily_limit", 500), date.today().isoformat())
     if unpushed:
-        text, status = describe_unpushed(settings, args[1], args[2], args[3:], spend=spend)
-        print(text)
-        sys.exit(status)
-    print(describe(settings, args[1], args[2], args[3:], spend=spend))
+        text, status, saw = describe_unpushed(settings, args[1], args[2], args[3:], spend=spend)
+    else:
+        (text, saw), status = describe(settings, args[1], args[2], args[3:], spend=spend), 0
+    print(json.dumps({"text": text, "seen": saw}) if as_json else text)
+    sys.exit(status)

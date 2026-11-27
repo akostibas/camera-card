@@ -18,6 +18,7 @@ from homeassistant.helpers.template import Template
 
 from .alert_frames import async_setup_alert_frames
 from .descriptions import async_setup_descriptions
+from .tuning import async_setup_tuning
 from .const import DOMAIN, SUPPORT_PTZ_SPEED
 from .host import ReolinkHost
 from .util import get_device_uid_and_ch, raise_translated_error
@@ -94,6 +95,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
     """Set up Reolink services."""
     async_setup_alert_frames(hass)  # camera-card
     async_setup_descriptions(hass)  # family-infra override (camera-card#7)
+    async_setup_tuning(hass)  # camera-card#3
 
     hass.services.async_register(
         DOMAIN,

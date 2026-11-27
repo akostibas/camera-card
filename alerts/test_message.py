@@ -137,9 +137,9 @@ def demo():
     # No pictures: the model is not asked. Model fails: plain wording. Model answers: its sentence.
     def fail(cfg, files):
         raise TimeoutError
-    assert describe(EXAMPLE, crawl, "Animal", [], ask=None) == "Animal detected."
-    assert describe(EXAMPLE, door, "0", ["a.jpg"], ask=fail) == "Someone is at the door."
-    assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=lambda cfg, files: tech) == "An adult is working on equipment or wiring."
+    assert describe(EXAMPLE, crawl, "Animal", [], ask=None)[0] == "Animal detected."
+    assert describe(EXAMPLE, door, "0", ["a.jpg"], ask=fail)[0] == "Someone is at the door."
+    assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=lambda cfg, files: tech)[0] == "An adult is working on equipment or wiring."
     seen = []
     describe(EXAMPLE, crawl, "Person", [f"{i}.jpg" for i in range(75)], ask=lambda cfg, files: seen.extend(files) or tech)
     assert len(seen) == 15 and seen[:2] == ["0.jpg", "5.jpg"]
@@ -147,28 +147,35 @@ def demo():
     passing = traffic("car", parking_at_the_near_curb=0.9)
 
     def unpushed(camera, trigger, answers=passing, files=("a.jpg",), **kw):
-        return describe_unpushed(EXAMPLE, camera, trigger, list(files), ask=lambda cfg, files: answers, **kw)
+        return describe_unpushed(EXAMPLE, camera, trigger, list(files), ask=lambda cfg, files: answers, **kw)[:2]
     assert unpushed(street, "Vehicle") == ("A car is parking at the near curb.", 0)
     assert unpushed(street, "Motion") == ("", 0), "event level leaves plain motion alone"
     assert unpushed(crawl, "Animal", pest) == ("", 0), "cameras describe on push unless told otherwise"
     assert unpushed(street, "Vehicle", files=()) == ("", 0)
     assert unpushed(street, "Vehicle", still) == ("Vehicle detected, but it looks like a false alarm.", 0)
-    assert describe_unpushed(EXAMPLE, street, "Vehicle", ["a.jpg"], ask=fail) == ("", 0), "plain wording is not worth keeping"
+    assert describe_unpushed(EXAMPLE, street, "Vehicle", ["a.jpg"], ask=fail)[:2] == ("", 0), "plain wording is not worth keeping"
     motion = {**EXAMPLE, "cameras": {street: {**CAMERAS[street], "describe": "motion"}}}
-    assert describe_unpushed(motion, street, "Motion", ["a.jpg"], ask=lambda cfg, files: passing) == ("A car is parking at the near curb.", 0)
+    assert describe_unpushed(motion, street, "Motion", ["a.jpg"], ask=lambda cfg, files: passing)[:2] == ("A car is parking at the near curb.", 0)
 
     # The day's limit: the first call refused carries the warning, later ones are just plain, tomorrow starts over.
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         spend = budget(f"{d}/count", 2, "2026-11-20")
         assert unpushed(street, "Vehicle", spend=spend) == ("A car is parking at the near curb.", 0)
-        assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=lambda cfg, files: tech, spend=spend) == "An adult is working on equipment or wiring."
+        assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=lambda cfg, files: tech, spend=spend)[0] == "An adult is working on equipment or wiring."
         warning = "Descriptions have stopped until tomorrow: today's limit of 2 is used up. Street used the most (1)."
-        assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=fail, spend=spend) == f"Person detected. {warning}"
-        assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=fail, spend=spend) == "Person detected."
+        assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=fail, spend=spend)[0] == f"Person detected. {warning}"
+        assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=fail, spend=spend)[0] == "Person detected."
         assert unpushed(street, "Vehicle", spend=spend) == ("", 0)
         assert unpushed(street, "Vehicle", spend=budget(f"{d}/count", 2, "2026-11-21")) == ("A car is parking at the near curb.", 0)
         assert unpushed(street, "Vehicle", spend=budget(f"{d}/other", 0, "2026-11-20")) == (warning.replace("of 2", "of 0").replace("(1)", "(0)"), 3)
+
+    # What the model saw, for auto-tuning: sure answers only, all None when it wasn't asked.
+    from message import seen as saw
+    assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=lambda cfg, files: tech)[1]["person"] == "yes"
+    assert describe(EXAMPLE, crawl, "Person", ["a.jpg"], ask=fail)[1] == {"person": None, "vehicle": None, "animal": None}
+    assert saw(still, T)["vehicle"] == "no"
+    assert "animal=Is an animal visible in any image?" in questions(CAMERAS[street], ["a.jpg"]), "asked even where not reported"
 
     # One picture is a snapshot; several are footage, and the model is told they are in order.
     assert questions(CAMERAS[door], ["a.jpg"])[-1] == CAMERAS[door]["scene"]

@@ -14,6 +14,17 @@ thresholds:
 # plain wording until tomorrow, and the first one refused says so.
 daily_limit: 500
 
+# Auto-tuning (the camera card's Tuning view, admins only). Each chosen detection starts at `start`%
+# sensitivity; every `every` false alarms lowers it by `step`; `need` real ones in a row finishes it.
+# It never goes below `floor`: stopping there usually means something in view needs fixing instead.
+# Read when tuning starts, so changes apply to the next run.
+tuning:
+  start: 100
+  step: 3
+  every: 2
+  need: 4
+  floor: 30
+
 # Per camera:
 #   scene          one-line description of the view, sent with the pictures
 #   actions_list   ask who is there and what they are doing. Entries must read after "is", in the

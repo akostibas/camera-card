@@ -22,6 +22,8 @@ const I = {
   mute: '<path d="M4 9.5h3.5L12 5v14l-4.5-4.5H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>',
   full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   unknown: '<circle cx="12" cy="12" r="8"/><path d="M9.8 9.5a2.3 2.3 0 1 1 3.2 2.1c-.6.3-1 .8-1 1.4v.5M12 16.5v.01"/>',
+  tune: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
 };
 const FILLED = new Set(['play', 'pause', 'prev', 'next']);
 const svg = (k, cls = '') => `<svg class="${FILLED.has(k) ? 'f ' : ''}${cls}" viewBox="0 0 24 24">${I[k]}</svg>`;
@@ -103,6 +105,25 @@ svg.f{fill:currentColor;stroke:none}
 .end{padding:20px;text-align:center;font-size:12px;color:var(--mut)}
 #toast{position:absolute;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);opacity:0;transition:.25s;background:#2c2c2ef2;color:#fff;padding:10px 16px;border-radius:14px;font-size:14px;white-space:nowrap;pointer-events:none;z-index:9}
 #toast.show{opacity:1;transform:translate(-50%,0)}
+#tune{position:absolute;inset:0;z-index:8;background:var(--pg);display:flex;flex-direction:column}
+#tune header{flex:none;display:flex;align-items:center;gap:8px;padding:12px 16px 8px;border-bottom:.5px solid var(--sep)}
+#tune header h2{flex:1;margin:0;font-size:17px}
+#tune header button{width:36px;height:36px;display:grid;place-items:center;border-radius:18px}
+#tune .how{font-size:13px;color:var(--mut);padding:10px 16px 4px}
+#tlist{flex:1;overflow-y:auto;padding:0 16px}
+.tc{padding:10px 0;border-bottom:.5px solid var(--sep)}
+.tc h3{margin:0 0 6px;font-size:15px;display:flex;align-items:center;gap:6px}
+.tc h3 .tg{font-size:10px;font-weight:700;letter-spacing:.05em;color:#fff;background:var(--acc);border-radius:3px;padding:1px 5px}
+.tm{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:6px 0;font-size:14px}
+.tm .bx{width:20px;height:20px;border-radius:5px;border:2px solid var(--mut);flex:none;display:grid;place-items:center}
+.tm[aria-pressed=true] .bx{background:var(--acc);border-color:var(--acc)}
+.tm[aria-pressed=true] .bx::after{content:"";width:9px;height:5px;border:2px solid #fff;border-top:0;border-right:0;transform:translateY(-1px) rotate(-45deg)}
+.tm .nm{flex:none;width:64px}
+.tm .st{flex:1;min-width:0;color:var(--mut);font-size:13px;font-variant-numeric:tabular-nums}
+.tm .st.on{color:var(--acc)}
+#tune footer{flex:none;display:flex;gap:8px;padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));border-top:.5px solid var(--sep)}
+#tune footer button{flex:1;height:44px;border-radius:22px;font-weight:600;background:var(--cell2)}
+#tgo{background:var(--acc)!important;color:#fff}
 `;
 
 const HTML = `
@@ -143,8 +164,15 @@ const HTML = `
     <button class="chip" data-tag="doorbell" aria-label="Rang the doorbell">Rang</button>
     <span class="sp"></span>
     <button class="chip" id="bdate" aria-label="Jump to a day"><input type="date" id="date" aria-label="Jump to a day"></button>
+    <button class="chip" id="btune" aria-label="Auto-tune detection" hidden></button>
   </div>
   <main id="feed"><div id="more"></div></main>
+  <section id="tune" hidden>
+    <header><h2>Auto-tune detection</h2><button id="tclose" aria-label="Close"></button></header>
+    <div class="how">Pick what each camera should tune. Tuning starts at full sensitivity and turns it down whenever alerts turn out to be empty. False alarms stay silent while a camera tunes; its real alerts say [TUNING].</div>
+    <div id="tlist"></div>
+    <footer><button id="tstop">Cancel tuning</button><button id="tgo">Auto-Tune</button></footer>
+  </section>
   <div id="toast"></div>
 </div>`;
 
@@ -705,6 +733,72 @@ function mount(host, config) {
 
   let toastT;
   function toast(s) { const t = $('#toast'); t.textContent = s; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400); }
+
+  // ---- auto-tune (#3): admins only; the integration refuses everyone else too
+  const tuneEl = $('#tune'), tlist = $('#tlist'), btune = $('#btune');
+  const TMODES = { person: 'People', vehicle: 'Cars', animal: 'Animals', motion: 'Motion' };
+  const T = { cams: [], pick: new Map(), timer: null, busy: false };
+  const tstat = (m) => {
+    if (m.status === 'tuning') return `${m.value}% · ${m.streak} of ${m.need} real in a row · since ${md(Date.parse(m.since))}`;
+    if (m.status === 'done') return `Tuned to ${m.value}% on ${md(Date.parse(m.ended))}`;
+    if (m.status === 'floor') return `Stopped at ${m.floor}%: ${m.real ? 'mostly false alarms' : 'never saw a real one'}`;
+    return `${m.now}% now`;
+  };
+  function drawTune() {
+    tlist.innerHTML = T.cams.map((c) => {
+      const pick = T.pick.get(c.ch);
+      const on = Object.values(c.modes).some((m) => m.status === 'tuning');
+      return `<div class="tc"><h3>${esc(c.name)}${on ? '<span class="tg">TUNING</span>' : ''}</h3>`
+        + Object.entries(c.modes).map(([k, m]) => `<button class="tm" data-ch="${c.ch}" data-mode="${k}" aria-pressed="${pick.has(k)}">`
+          + `<span class="bx"></span><span class="nm">${TMODES[k]}</span><span class="st${m.status === 'tuning' ? ' on' : ''}">${esc(tstat(m))}</span></button>`).join('')
+        + '</div>';
+    }).join('') || '<div class="end">No camera here can be tuned.</div>';
+    $('#tstop').disabled = T.busy || !T.cams.some((c) => Object.values(c.modes).some((m) => m.status === 'tuning'));
+    $('#tgo').disabled = T.busy;
+  }
+  async function loadTune() {
+    const j = await api('reolink/tuning');
+    T.cams = j.cameras;
+    for (const c of T.cams) {
+      if (T.pick.has(c.ch)) continue;
+      const tuning = Object.keys(c.modes).filter((k) => c.modes[k].status === 'tuning');
+      T.pick.set(c.ch, new Set(tuning.length ? tuning : 'person' in c.modes ? ['person'] : []));
+    }
+    drawTune();
+  }
+  async function postTune(action, picks) {
+    T.busy = true; drawTune();
+    try {
+      const r = await host.hass.callApi('POST', 'reolink/tuning', { action, picks });
+      if (r.failed?.length) toast(`Couldn't change ${r.failed.length}: ${r.failed[0]}`);
+      await loadTune();
+    } catch (e) { toast(`Couldn't ${action} tuning (${errText(e)})`); } finally { T.busy = false; drawTune(); }
+  }
+  const tuning = (pred) => Object.fromEntries(T.cams.map((c) => [c.ch, Object.keys(c.modes).filter((k) => pred(c, k))]).filter(([, ms]) => ms.length));
+  if (host.hass.user?.is_admin) {
+    btune.hidden = false; btune.innerHTML = svg('tune');
+    $('#tclose').innerHTML = svg('x');
+    btune.addEventListener('click', () => {
+      tuneEl.hidden = false; tlist.innerHTML = '<div class="end">Loading…</div>';
+      loadTune().catch((e) => { tlist.innerHTML = `<div class="end">Couldn't load tuning (${esc(errText(e))}).</div>`; });
+      T.timer ??= setInterval(() => { if (!document.hidden && !T.busy) loadTune().catch(() => {}); }, 10000);
+    });
+    $('#tclose').addEventListener('click', () => { tuneEl.hidden = true; clearInterval(T.timer); T.timer = null; });
+    tlist.addEventListener('click', (e) => {
+      const b = e.target.closest('.tm');
+      if (!b) return;
+      const s = T.pick.get(+b.dataset.ch);
+      s.has(b.dataset.mode) ? s.delete(b.dataset.mode) : s.add(b.dataset.mode);
+      drawTune();
+    });
+    // starts what's picked and not already tuning: restarting would throw away its progress
+    $('#tgo').addEventListener('click', () => {
+      const picks = tuning((c, k) => T.pick.get(c.ch).has(k) && c.modes[k].status !== 'tuning');
+      if (!Object.keys(picks).length) return toast(T.cams.some((c) => T.pick.get(c.ch).size) ? 'Everything picked is already tuning' : 'Pick something to tune first');
+      postTune('start', picks);
+    });
+    $('#tstop').addEventListener('click', () => postTune('cancel', tuning((c, k) => c.modes[k].status === 'tuning')));
+  }
 
   // ---- start: today first, then the cameras and how far back the NVR goes
   (async () => {
