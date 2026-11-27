@@ -30,10 +30,10 @@ from message import message, questions, seen
 LEVELS = ("push", "event", "motion")  # each describes everything the one before it does
 
 
-def ask(cfg, files):
+def ask(cfg, files, timeout=15):
     """The model's answers about these pictures, keyed by question. Paid."""
     out = subprocess.run(["ask-gemini", "decide", *questions(cfg, files)],
-                         capture_output=True, text=True, check=True, timeout=15).stdout
+                         capture_output=True, text=True, check=True, timeout=timeout).stdout
     return {k: v for k, v in json.loads(out).items() if isinstance(v, dict)}
 
 

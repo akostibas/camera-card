@@ -12,7 +12,10 @@ def questions(cfg, files):
     acts = cfg.get("actions_list")
     if acts:
         for i, act in enumerate(acts, 1):
-            args += ["--yesno", f"act{i}=Is anyone {act} at any point in these images?"]
+            if cfg.get("people") == "tally":
+                args += ["--choice", f"act{i}=How many different people are {act} at any point in these images?:0,1,2,3 or more"]
+            else:
+                args += ["--yesno", f"act{i}=Is anyone {act} at any point in these images?"]
         args += [
             "--choice", "count=How many different people appear across the images?:0,1,2,3,4,5 or more",
             "--choice", "ages=Who is visible?:adults,kids,adults and kids,nobody",
@@ -104,6 +107,20 @@ def _people(cfg, a, t):
     return f"{who} {'was' if one else 'were'} spotted."
 
 
+def _tally(cfg, a, t):
+    """'3 people: 2 walking by; 1 walking a dog.' for a public view: strangers, counted by what they did."""
+    c = a["count"]
+    n = c["choice"] if c["confidence"] >= t["sure"] and c["choice"] != "0" else ""
+    floor = cfg.get("action_min", {})
+    done = []
+    for i, act in enumerate(cfg["actions_list"], 1):
+        k = a[f"act{i}"]
+        if k["choice"] != "0" and k["confidence"] >= max(t["act_sure"], floor.get(act, 0)):
+            done.append(f"{k['choice']} {act}" if n not in ("", "1") else act)
+    who = "Someone" if not n else ("1 person" if n == "1" else f"{n} people")
+    return f"{who}: {'; '.join(done)}." if done else f"{who} {'was' if n in ('', '1') else 'were'} spotted."
+
+
 def _vehicle(cfg, a, t):
     """'A van is parking at the near curb.', or '' for ordinary traffic and for vehicles that never move."""
     if a["vmove"]["answer"] != "yes" or a["vmove"]["confidence"] < t["sure"]:
@@ -164,7 +181,7 @@ def message(cfg, t, answers, trigger):
     parts, door = [], ""
     if a is not None:
         if cfg.get("actions_list") and a["person"]["answer"] == "yes":
-            parts.append(_people(cfg, a, t))
+            parts.append(_tally(cfg, a, t) if cfg.get("people") == "tally" else _people(cfg, a, t))
         if cfg.get("animals_list") and a["animal"]["answer"] == "yes" and a["animal"]["confidence"] >= t["sure"]:
             parts.append(_animal(a, t))
         if cfg.get("vehicles_list"):
