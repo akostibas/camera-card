@@ -11,8 +11,6 @@ import sys
 import tempfile
 from datetime import datetime
 
-from reolink_aio.baichuan import xmls
-
 CUT, CUT_DONE = 143, 300  # the NVR ends a cut with an empty cmd-143 message carrying status 300
 IDLE_TIMEOUT = 15
 # One cut at a time per connection: the tap in stream_cut matches payloads on cmd_id, not mess_id.
@@ -22,6 +20,14 @@ CUT_LOCK = asyncio.Lock()
 
 def _tm(t: datetime) -> str:
     return "".join(f"<{k}>{getattr(t, k)}</{k}>" for k in ("year", "month", "day", "hour", "minute", "second"))
+
+
+RECORD_TYPES = "manual, sched, io, md, people, face, vehicle, dog_cat, visitor, other, package"
+
+
+# Our own XML: reolink_aio's xmls templates are private and changed shape in 0.23 (startTime -> {time_range}).
+def _file_list(info: str) -> str:
+    return f'<?xml version="1.0" encoding="UTF-8" ?>\n<body>\n<FileInfoList version="1.1"><FileInfo>{info}</FileInfo></FileInfoList>\n</body>'
 
 
 def _xml_time(block: str, tag: str) -> datetime:
@@ -34,10 +40,12 @@ async def find_file(bc, uid: str, ch: int, stream: str, start: datetime, end: da
 
     The file containing start, else the first file starting inside the range.
     """
-    tpl = xmls.FileInfoListOpen.replace("mainStream", f"{stream}Stream")
-    times = {f"{p}_{k}": getattr(t, k) for p, t in (("start", start), ("end", end)) for k in ("year", "month", "day", "hour", "minute", "second")}
-    reply = await bc.send(cmd_id=14, channel=ch, body=tpl.format(channel=ch, uid=uid, **times))
-    close = xmls.FileInfoList.format(channel=ch, uid=uid, handle=re.search(r"<handle>(\d+)</handle>", reply).group(1))
+    reply = await bc.send(cmd_id=14, channel=ch, body=_file_list(
+        f"<uid>{uid}</uid><searchAITrack>1</searchAITrack><channelId>{ch}</channelId><logicChnBitmap>255</logicChnBitmap>"
+        f"<streamType>{stream}Stream</streamType><recordType>{RECORD_TYPES}</recordType>"
+        f"<startTime>{_tm(start)}</startTime><endTime>{_tm(end)}</endTime>"))
+    handle = re.search(r"<handle>(\d+)</handle>", reply).group(1)
+    close = _file_list(f"<channelId>{ch}</channelId><uid>{uid}</uid><searchAITrack>1</searchAITrack><handle>{handle}</handle>")
     try:
         listing = await bc.send(cmd_id=15, channel=ch, body=close)
     finally:
