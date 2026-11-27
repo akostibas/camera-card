@@ -761,8 +761,8 @@ function mount(host, config) {
     T.cams = j.cameras;
     for (const c of T.cams) {
       if (T.pick.has(c.ch)) continue;
-      const tuning = Object.keys(c.modes).filter((k) => c.modes[k].status === 'tuning');
-      T.pick.set(c.ch, new Set(tuning.length ? tuning : 'person' in c.modes ? ['person'] : []));
+      // finished modes start unpicked, so pressing Auto-Tune again doesn't redo them
+      T.pick.set(c.ch, new Set(Object.keys(c.modes).filter((k) => !['done', 'floor'].includes(c.modes[k].status))));
     }
     drawTune();
   }
