@@ -44,6 +44,7 @@ def _keyframes(media: bytes, parent: Path, width: int) -> tuple[list[str], list[
     parent.mkdir(parents=True, exist_ok=True)
     _prune(parent)
     out = Path(tempfile.mkdtemp(dir=parent))
+    out.chmod(0o755)  # mkdtemp makes it owner-only; bin/testdata copies pictures off the host over ssh
     to_mp4(media, f"{out}/clip.mp4")
     try:
         times = subprocess.run(["ffprobe", "-v", "error", "-skip_frame", "nokey", "-select_streams", "v:0",
