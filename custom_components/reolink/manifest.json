@@ -8,6 +8,7 @@
   "codeowners": ["@starkillerOG"],
   "config_flow": true,
   "connectivity": ["network"],
+  "after_dependencies": ["recorder"],
   "dependencies": ["ffmpeg", "http", "webhook"],
   "dhcp": [
     {

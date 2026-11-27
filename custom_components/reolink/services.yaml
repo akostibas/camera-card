@@ -83,6 +83,16 @@ save_keyframes:
         number:
           min: 320
           max: 3840
+    focus:
+      selector:
+        entity:
+          domain: binary_sensor
+    pictures:
+      default: 16
+      selector:
+        number:
+          min: 1
+          max: 75
 
 keep_description:
   fields:

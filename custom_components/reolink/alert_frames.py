@@ -2,6 +2,7 @@
 
 Not part of upstream HA: added by camera-card. Works on a recording still in progress.
 Keyframes only (~1 per 2s) because decoding the full 4K stream takes ~10s on a small host; this takes ~1s.
+With `focus` (a detection sensor), returns only `pictures` keyframes, chosen from while that sensor was on.
 """
 import asyncio
 import shutil
@@ -12,6 +13,7 @@ from pathlib import Path
 import probatio
 from reolink_aio.exceptions import ReolinkError
 
+from homeassistant.components.recorder import get_instance, history
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
@@ -19,23 +21,38 @@ from homeassistant.util import dt as dt_util
 
 from .baichuan_cut import CUT_LOCK, download_cut, to_mp4
 from .const import DOMAIN
+from .keyframe_pick import pick, windows
 from .util import get_host
 
 FRAME_DIR = Path("/cache/alert_frames")  # HDD mount; the container's /tmp is on the SD card
 TIMEOUT = 20  # a long playback cut can hold CUT_LOCK; give up so the alert still goes out
 
 
-def _keyframes(media: bytes, out: Path, width: int) -> list[str]:
+def _keyframes(media: bytes, out: Path, width: int) -> tuple[list[str], list[float]]:
+    """The keyframe JPEGs, and each one's seconds from the start of the cut."""
     FRAME_DIR.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=FRAME_DIR) as d:
         to_mp4(media, f"{d}/clip.mp4")
+        times = subprocess.run(["ffprobe", "-v", "error", "-skip_frame", "nokey", "-select_streams", "v:0",
+                                "-show_entries", "frame=pts_time", "-of", "csv=p=0", f"{d}/clip.mp4"],
+                               capture_output=True, text=True, check=True).stdout.split()
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-skip_frame", "nokey", "-i", f"{d}/clip.mp4",
                         "-vf", f"scale={width}:-2", "-fps_mode", "vfr", "-q:v", "4", f"{d}/k%02d.jpg"], check=True)
         shutil.rmtree(out, ignore_errors=True)
         out.mkdir()
         for f in sorted(Path(d).glob("k*.jpg")):
             f.rename(out / f.name)
-    return [str(f) for f in sorted(out.glob("k*.jpg"))]
+    files = [str(f) for f in sorted(out.glob("k*.jpg"))]
+    if len(times) != len(files):
+        raise OSError(f"{len(files)} keyframes but {len(times)} times")
+    return files, [float(t) for t in times]
+
+
+def _seen(hass: HomeAssistant, entity_id: str, start, end) -> list[tuple[float, float]]:
+    """Offsets from `start` while `entity_id` was on. Runs in the recorder's executor."""
+    states = history.state_changes_during_period(hass, start, end, entity_id, no_attributes=True).get(entity_id, [])
+    return windows([((s.last_changed - start).total_seconds(), s.state == "on") for s in states],
+                   (end - start).total_seconds())
 
 
 async def _async_save_keyframes(call: ServiceCall) -> ServiceResponse:
@@ -54,10 +71,16 @@ async def _async_save_keyframes(call: ServiceCall) -> ServiceResponse:
             media = await download_cut(host.api.baichuan, host.api.uid, ch, "main", start, end)
         finally:
             CUT_LOCK.release()
-        files = await hass.async_add_executor_job(_keyframes, media, FRAME_DIR / f"ch{ch}", call.data["width"])
+        files, times = await hass.async_add_executor_job(_keyframes, media, FRAME_DIR / f"ch{ch}", call.data["width"])
     except (ReolinkError, LookupError, TimeoutError, OSError, subprocess.CalledProcessError) as err:
         raise HomeAssistantError(f"keyframes for ch {ch} {start}..{end}: {err}") from err
-    return {"files": files}
+    if not (focus := call.data.get("focus")):
+        return {"files": files}
+    # ponytail: assumes the cut starts at `start`; the NVR may begin it up to a keyframe (~2s) earlier, inside PAD
+    span = call.data["start"], call.data["end"]
+    seen = await get_instance(hass).async_add_executor_job(_seen, hass, focus, *(dt_util.as_utc(t) for t in span))
+    chosen = pick(times, seen, call.data["pictures"])
+    return {"files": [files[i] for i in chosen], "seen": [list(w) for w in seen], "times": [times[i] for i in chosen]}
 
 
 def async_setup_alert_frames(hass: HomeAssistant) -> None:
@@ -70,6 +93,8 @@ def async_setup_alert_frames(hass: HomeAssistant) -> None:
             probatio.Required("start"): cv.datetime,
             probatio.Required("end"): cv.datetime,
             probatio.Optional("width", default=1280): cv.positive_int,
+            probatio.Optional("focus"): cv.entity_id,
+            probatio.Optional("pictures", default=16): cv.positive_int,
         }),
         supports_response=SupportsResponse.ONLY,
     )
