@@ -29,3 +29,9 @@ repos:
         entry: node card/test_time.mjs
         files: ^card/
         pass_filenames: false
+    -   id: keyframe-pick
+        name: street descriptions picture every passerby
+        language: system
+        entry: uv run custom_components/test_keyframe_pick.py
+        files: ^custom_components/(reolink/keyframe_pick\.py|test_keyframe_pick\.py)$
+        pass_filenames: false
