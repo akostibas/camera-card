@@ -129,7 +129,9 @@ def cmd_note(a):
 def cmd_list(_):
     for clip in sorted(LIB.glob("*/*/clip.yaml")):
         d = load(clip)
-        print(f"{clip.parent.relative_to(LIB)}  {d.get('pictures')} pictures  {len(d.get('notes', []))} notes  "
+        noted = sum(bool(load(m).get("notes")) for m in clip.parent.glob("k*.yaml"))
+        print(f"{clip.parent.relative_to(LIB)}  {noted}/{d.get('pictures')} pictures noted  "
+              f"{len(d.get('notes', []))} recording notes  "
               f"{size(clip.parent) >> 20} MB")
     print(f"library: {size(LIB) >> 20} of {LIMIT >> 20} MB at {LIB}")
 
