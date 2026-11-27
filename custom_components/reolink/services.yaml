@@ -123,6 +123,9 @@ tuning_verdict:
       required: true
       selector:
         text:
+    judge:
+      selector:
+        boolean:
     person:
       selector:
         text:

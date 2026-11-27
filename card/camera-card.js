@@ -169,7 +169,7 @@ const HTML = `
   <main id="feed"><div id="more"></div></main>
   <section id="tune" hidden>
     <header><h2>Auto-tune detection</h2><button id="tclose" aria-label="Close"></button></header>
-    <div class="how">Pick what each camera should tune. Tuning starts at full sensitivity and turns it down whenever alerts turn out to be empty. False alarms stay silent while a camera tunes; its real alerts say [TUNING].</div>
+    <div class="how">Pick what each camera should tune. Tuning starts at full sensitivity and turns it down while false alarms come more than about once a week. It takes at least two days, so it sees nights too. False alarms stay silent while a camera tunes; its real alerts say [TUNING].</div>
     <div id="tlist"></div>
     <footer><button id="tstop">Cancel tuning</button><button id="tgo">Auto-Tune</button></footer>
   </section>
@@ -736,10 +736,14 @@ function mount(host, config) {
 
   // ---- auto-tune (#3): admins only; the integration refuses everyone else too
   const tuneEl = $('#tune'), tlist = $('#tlist'), btune = $('#btune');
-  const TMODES = { person: 'People', vehicle: 'Cars', animal: 'Animals', motion: 'Motion' };
+  const TMODES = { person: 'People', vehicle: 'Cars', animal: 'Animals' };
   const T = { cams: [], pick: new Map(), timer: null, busy: false };
   const tstat = (m) => {
-    if (m.status === 'tuning') return `${m.value}% · ${m.streak} of ${m.need} real in a row · since ${md(Date.parse(m.since))}`;
+    if (m.status === 'tuning') {
+      const due = Date.parse(m.due);
+      return `${m.value}% · ${m.real} real, ${m.empty} false · `
+        + (m.paused ? 'out of Gemini calls today' : `done ${wmd(due)} ${hm(due)} if quiet`);
+    }
     if (m.status === 'done') return `Tuned to ${m.value}% on ${md(Date.parse(m.ended))}`;
     if (m.status === 'floor') return `Stopped at ${m.floor}%: ${m.real ? 'mostly false alarms' : 'never saw a real one'}`;
     return `${m.now}% now`;

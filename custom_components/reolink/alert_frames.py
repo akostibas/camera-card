@@ -8,6 +8,7 @@ import asyncio
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 import probatio
@@ -26,22 +27,32 @@ from .util import get_host
 
 FRAME_DIR = Path("/cache/alert_frames")  # HDD mount; the container's /tmp is on the SD card
 TIMEOUT = 20  # a long playback cut can hold CUT_LOCK; give up so the alert still goes out
+KEEP = 30 * 60  # seconds a call's pictures stay; the slowest reader is describe.py, well under a minute
 
 
-def _keyframes(media: bytes, out: Path, width: int) -> tuple[list[str], list[float]]:
+def _prune(parent: Path) -> None:
+    """Drops earlier calls' folders once their readers are surely done."""
+    cutoff = time.time() - KEEP
+    for d in parent.iterdir():
+        if d.is_dir() and d.stat().st_mtime < cutoff:
+            shutil.rmtree(d, ignore_errors=True)
+
+
+def _keyframes(media: bytes, parent: Path, width: int) -> tuple[list[str], list[float]]:
     """The keyframe JPEGs, and each one's seconds from the start of the cut."""
-    FRAME_DIR.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=FRAME_DIR) as d:
-        to_mp4(media, f"{d}/clip.mp4")
+    # A folder per call: a shared one let one alert's pictures overwrite another's before Gemini read them
+    parent.mkdir(parents=True, exist_ok=True)
+    _prune(parent)
+    out = Path(tempfile.mkdtemp(dir=parent))
+    to_mp4(media, f"{out}/clip.mp4")
+    try:
         times = subprocess.run(["ffprobe", "-v", "error", "-skip_frame", "nokey", "-select_streams", "v:0",
-                                "-show_entries", "frame=pts_time", "-of", "csv=p=0", f"{d}/clip.mp4"],
+                                "-show_entries", "frame=pts_time", "-of", "csv=p=0", f"{out}/clip.mp4"],
                                capture_output=True, text=True, check=True).stdout.split()
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-skip_frame", "nokey", "-i", f"{d}/clip.mp4",
-                        "-vf", f"scale={width}:-2", "-fps_mode", "vfr", "-q:v", "4", f"{d}/k%02d.jpg"], check=True)
-        shutil.rmtree(out, ignore_errors=True)
-        out.mkdir()
-        for f in sorted(Path(d).glob("k*.jpg")):
-            f.rename(out / f.name)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-skip_frame", "nokey", "-i", f"{out}/clip.mp4",
+                        "-vf", f"scale={width}:-2", "-fps_mode", "vfr", "-q:v", "4", f"{out}/k%02d.jpg"], check=True)
+    finally:
+        Path(f"{out}/clip.mp4").unlink(missing_ok=True)
     files = [str(f) for f in sorted(out.glob("k*.jpg"))]
     if len(times) != len(files):
         raise OSError(f"{len(files)} keyframes but {len(times)} times")
