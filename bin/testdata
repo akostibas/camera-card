@@ -84,7 +84,9 @@ def cmd_import(a):
         srcs = [f.replace("/cache", HOST_CACHE, 1) for f in r["files"]]
         def fetch(remote_dir, names, into):  # one connection: scp opens one per file
             into.mkdir(exist_ok=True)
-            tar = subprocess.Popen(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, "tar", "-C", remote_dir, "-cf", "-", *names], stdout=subprocess.PIPE)
+            # Shared connection: one 1Password approval covers every import for the next 2h.
+            tar = subprocess.Popen(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ControlMaster=auto",
+                                    "-o", "ControlPath=~/.ssh/cm-%C", "-o", "ControlPersist=2h", host, "tar", "-C", remote_dir, "-cf", "-", *names], stdout=subprocess.PIPE)
             subprocess.run(["tar", "-C", str(into), "-xf", "-"], stdin=tar.stdout, check=True)
             if tar.wait():
                 die(f"copying from {host}:{remote_dir} failed")
