@@ -18,6 +18,7 @@ from homeassistant.helpers.template import Template
 
 from .alert_frames import async_setup_alert_frames
 from .descriptions import async_setup_descriptions
+from .reports import async_setup_reports
 from .tuning import async_setup_tuning
 from .const import DOMAIN, SUPPORT_PTZ_SPEED
 from .host import ReolinkHost
@@ -96,6 +97,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
     async_setup_alert_frames(hass)  # camera-card
     async_setup_descriptions(hass)  # family-infra override (camera-card#7)
     async_setup_tuning(hass)  # camera-card#3
+    async_setup_reports(hass)  # camera-card#22
 
     hass.services.async_register(
         DOMAIN,

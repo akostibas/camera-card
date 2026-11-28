@@ -9,6 +9,7 @@
   bin/testdata note PATH --by WHO --for ISSUE < FIELDS.yaml      add a note to a picture or a recording
   bin/testdata todo RECORDING --for ISSUE                        what in a recording still lacks a note for ISSUE
   bin/testdata list                                              recordings filed, and the space they use
+  bin/testdata reports                                           wrong descriptions flagged on the card, not yet filed
 
 The library is testdata/ in the main checkout (gitignored: this repo is public and the pictures show
 the house). One folder per recording, testdata/CAMERA/START/, holding:
@@ -24,13 +25,14 @@ than the recording (so every keyframe comes back, with `times` and `seen`), plus
 it was called with. The host to copy from is HA_SSH in .dev-push.env. The library stops at 250 MB.
 """
 import argparse
+import importlib.util
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
@@ -40,6 +42,8 @@ MAIN = Path(subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git
                            capture_output=True, text=True, check=True, cwd=Path(__file__).parent).stdout.strip()).parent
 LIB = MAIN / "testdata"
 HOST_CACHE = "/opt/homeassistant/cache"  # the container's /cache
+HOST_CONFIG = "/opt/homeassistant/config"
+KEEP_DAYS = 30  # about how long the NVR keeps a recording
 
 
 def die(msg):
@@ -139,6 +143,50 @@ def cmd_todo(a):
     print(f"{len(left)} still need a note for {getattr(a, 'for')}: {' '.join(left)}" if left else "all noted")
 
 
+def ssh_read(path):
+    host = env("HA_SSH")
+    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ControlMaster=auto",
+                        "-o", "ControlPath=~/.ssh/cm-%C", "-o", "ControlPersist=2h", host,
+                        f"cat {path} 2>/dev/null || true"], capture_output=True, text=True)
+    if r.returncode:
+        die(f"reading {host}:{path} failed: {r.stderr.strip()}")
+    return r.stdout
+
+
+def folder_time(d):  # testdata/CAMERA/2026-11-17T11-53-21
+    return datetime.fromisoformat(d.name[:11] + d.name[11:].replace("-", ":"))
+
+
+def cmd_reports(_):
+    spec = importlib.util.spec_from_file_location("reports", Path(__file__).parent.parent / "custom_components/reolink/reports.py")
+    reports = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reports)
+    flags = reports.merged(ssh_read(f"{HOST_CONFIG}/{reports.FILE}").splitlines())
+    filed = [folder_time(clip.parent) for clip in LIB.glob("*/*/clip.yaml")]
+    def is_filed(r):  # folders are named in house time, without a zone
+        a, b = (datetime.fromisoformat(r[k]).replace(tzinfo=None) for k in ("start", "end"))
+        return any(a.timestamp() - 5 <= t.timestamp() <= b.timestamp() for t in filed)
+    by_clip = {}
+    for r in flags:  # one clip flagged twice is one report
+        key = (r["ch"], r["start"])
+        if key in by_clip:
+            by_clip[key]["notes"] += r["notes"]
+        else:
+            by_clip[key] = r
+    open_ = [r for r in by_clip.values() if not is_filed(r)]
+    print(f"{len(open_)} open of {len(by_clip)} flagged (oldest first; the NVR keeps recordings about {KEEP_DAYS} days)")
+    for r in open_:
+        age = (datetime.now().astimezone() - datetime.fromisoformat(r["start"])).days
+        at = int(r["at"])
+        print(f"\n  {r['camera']} (ch {r['ch']})  {r['start']} to {r['end'][11:19]}  paused at {at // 60}:{at % 60:02d}"
+              f"  {age} days ago{'  LIKELY GONE' if age >= KEEP_DAYS else ''}  by {r['by']}")
+        print(f"    said: {' '.join(r['said'])}")
+        for n in r["notes"]:
+            print(f"    note: {n}")
+    if open_:
+        print("\nFile each with save_keyframes over its start and end, then `bin/testdata import`.")
+
+
 def cmd_list(_):
     for clip in sorted(LIB.glob("*/*/clip.yaml")):
         d = load(clip)
@@ -166,5 +214,6 @@ s.add_argument("recording")
 s.add_argument("--for", required=True)
 s.set_defaults(fn=cmd_todo)
 sub.add_parser("list").set_defaults(fn=cmd_list)
+sub.add_parser("reports").set_defaults(fn=cmd_reports)
 a = p.parse_args()
 a.fn(a)

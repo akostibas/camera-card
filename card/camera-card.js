@@ -24,6 +24,7 @@ const I = {
   unknown: '<circle cx="12" cy="12" r="8"/><path d="M9.8 9.5a2.3 2.3 0 1 1 3.2 2.1c-.6.3-1 .8-1 1.4v.5M12 16.5v.01"/>',
   tune: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  down: '<path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.7a2 2 0 0 0-2 1.7l-1.4 9a2 2 0 0 0 2 2.3zM17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/>',
 };
 const FILLED = new Set(['play', 'pause', 'prev', 'next']);
 const svg = (k, cls = '') => `<svg class="${FILLED.has(k) ? 'f ' : ''}${cls}" viewBox="0 0 24 24">${I[k]}</svg>`;
@@ -50,6 +51,12 @@ svg.f{fill:currentColor;stroke:none}
 #video.max{position:fixed;inset:0;z-index:20}
 #cap{position:relative;max-width:84%;text-align:center;font-size:15px;color:var(--mut)}
 #vcam{position:absolute;z-index:1;color:#fff;left:10px;bottom:8px;max-width:calc(100% - 20px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none}
+#vcam.fl{max-width:calc(100% - 52px)}
+#bflag{position:absolute;z-index:2;right:4px;bottom:0;width:36px;height:32px;display:grid;place-items:center;color:#fff;opacity:.45}
+#bflag svg{width:16px;height:16px}#bflag[aria-pressed=true]{opacity:.9}#bflag[aria-pressed=true] svg{fill:currentColor;fill-opacity:.35}
+#fnote{position:absolute;z-index:3;left:8px;right:8px;bottom:8px;display:flex;gap:6px;align-items:center;padding:6px;border-radius:12px;background:#000d;color:#fff}
+#fnote input{flex:1;min-width:0;height:32px;padding:0 10px;border:0;border-radius:8px;background:#fff2;color:#fff;font:inherit;font-size:16px}
+#fnote button{height:32px;padding:0 10px;border-radius:8px;font-size:13px;font-weight:600}#fnote button[type=submit]{background:var(--acc)}
 #ctl{flex:none;display:flex;flex-direction:column;padding:2px 10px 4px;background:var(--pg)}
 .pill{height:30px;min-width:44px;padding:0 10px;border-radius:15px;background:var(--cell2);font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:4px}
 .pill.red{background:var(--red);color:#fff}
@@ -133,6 +140,8 @@ const HTML = `
     <div id="single" hidden>
       <div id="video">
         <span id="vcam"></span>
+        <button id="bflag" aria-label="This description is wrong" hidden></button>
+        <form id="fnote" hidden><input id="fnin" maxlength="500" placeholder="What was wrong? (optional)" enterkeyhint="send" aria-label="What was wrong"><button type="submit">Add</button><button type="button" id="fnx" aria-label="Done"></button></form>
         <video id="vid" playsinline muted hidden></video>
         <img id="liveimg" alt="" hidden>
         <div id="live"></div>
@@ -647,6 +656,7 @@ function mount(host, config) {
     if (!isClip) drawStream(ch);
     setText($('#cap'), isClip ? (v.status || '') : picture(ch) ? '' : 'No live view for this camera');
     setText($('#vcam'), isClip ? `${cam[ch].name} · ${label(c)}` : cam[ch].name);
+    drawFlag(isClip && c);
     $('#bspeed').hidden = !isClip;
     $('#blive').classList.toggle('red', !isClip); // red: watching live; grey: tap to go live
     $('#blive').setAttribute('aria-label', isClip ? 'Go live' : 'Live');
@@ -733,6 +743,38 @@ function mount(host, config) {
 
   let toastT;
   function toast(s) { const t = $('#toast'); t.textContent = s; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400); }
+
+  // ---- flag a wrong description (#22): admins only, like auto-tune; the integration refuses others too
+  const bflag = $('#bflag'), fnote = $('#fnote'), fnin = $('#fnin');
+  const F = new Map(); // clip key -> report ref, this session only: a repeat after a reload is merged by key later
+  let noteFor = null; // the clip key the open note box belongs to
+  bflag.innerHTML = svg('down'); $('#fnx').innerHTML = svg('x');
+  function drawFlag(c) {
+    const on = !!(c && c.said.length && host.hass.user?.is_admin);
+    bflag.hidden = !on; $('#vcam').classList.toggle('fl', on);
+    if (on) bflag.setAttribute('aria-pressed', F.has(c.key));
+    if (!on || noteFor !== c.key) { fnote.hidden = true; noteFor = null; }
+  }
+  bflag.addEventListener('click', async () => {
+    const c = S.view.clip;
+    if (!c || F.has(c.key)) return;
+    F.set(c.key, null); drawFlag(c);
+    try {
+      const r = await host.hass.callApi('POST', 'reolink/report', { ch: c.cam, start: c.start, end: c.end, said: c.said, at: vid.currentTime || S.view.t || 0 });
+      F.set(c.key, r.ref);
+      if (S.view.clip?.key === c.key) { noteFor = c.key; fnin.value = ''; fnote.hidden = false; }
+      toast('Flagged for tuning');
+    } catch (e) { F.delete(c.key); toast(`Couldn't flag it (${errText(e)})`); }
+    draw();
+  });
+  fnote.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const ref = F.get(noteFor), note = fnin.value.trim();
+    fnote.hidden = true; noteFor = null; fnin.blur();
+    if (!note || !ref) return;
+    try { await host.hass.callApi('POST', 'reolink/report', { ref, note }); toast('Note added'); } catch (err) { toast(`Couldn't add the note (${errText(err)})`); }
+  });
+  $('#fnx').addEventListener('click', () => { fnote.hidden = true; noteFor = null; });
 
   // ---- auto-tune (#3): admins only; the integration refuses everyone else too
   const tuneEl = $('#tune'), tlist = $('#tlist'), btune = $('#btune');

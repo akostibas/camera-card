@@ -5,3 +5,5 @@ hls-js | 90d | 2026-11-21 | npm view hls.js version; if newer than 1.6.13: repla
 reolink-integration | 30d | 2026-11-21 | compare the Home Assistant version in use to "version" in custom_components/reolink/manifest.json; if HA is newer: bin/integration-refresh <that version>, drop any change of ours HA now covers, then deploy and play a clip
 # One-off (camera-card#3, started 2026-11-27): review the first Auto-Tune run, then delete this line.
 autotune-review | 2d | 2026-11-27 | GET /api/reolink/tuning (the card's Auto-tune view) and home-assistant.log "Tuning ch": where each camera settled, false alarms per camera, the day's Gemini count in camera_alerts.yaml.count; use them to pick monthly budgets for #19 and add the findings there
+# Wrong descriptions flagged on the card (camera-card#22) roll off the NVR after about a month.
+description-reports | 14d | 2026-11-28 | bin/testdata reports; file each open one (save_keyframes, bin/testdata import) and label it as in #14 before the NVR overwrites it
