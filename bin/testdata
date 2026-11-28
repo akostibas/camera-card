@@ -21,7 +21,7 @@ several stories can label the same pictures. A correction is a later note saying
 
 RESPONSE.json is what reolink.save_keyframes returned when called with `focus` and `pictures` larger
 than the recording (so every keyframe comes back, with `times` and `seen`), plus "start": the ISO time
-it was called with. The host to copy from is HA_SSH in .dev-push.env. The library stops at 200 MB.
+it was called with. The host to copy from is HA_SSH in .dev-push.env. The library stops at 250 MB.
 """
 import argparse
 import json
