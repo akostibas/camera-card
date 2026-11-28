@@ -70,8 +70,8 @@ svg.f{fill:currentColor;stroke:none}
 #cams .chip{padding:0 6px}
 .chip svg{width:15px;height:15px}
 #filters .chip{padding:0 12px}
-#bdate{position:relative}
-#date{position:absolute;inset:0;opacity:0;width:100%}
+#bdate{position:relative;overflow:hidden}  /* iOS sizes date fields wider than the chip; unclipped, it covered #btune */
+#date{position:absolute;inset:0;opacity:0;width:100%;min-width:0;-webkit-appearance:none;appearance:none}
 #feed{flex:1;overflow-y:auto;overflow-anchor:none;overscroll-behavior:contain;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
 .dh{position:sticky;top:0;z-index:2;background:var(--pg);padding:8px 16px 6px}
 .dh .tt{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:16px}
