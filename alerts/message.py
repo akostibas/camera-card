@@ -19,6 +19,15 @@ def questions(cfg, files):
             "--choice", "men=How many different adult men appear across the images?:0,1,2,3 or more,cannot tell",
             "--choice", "women=How many different adult women appear across the images?:0,1,2,3 or more,cannot tell",
         ]
+    if tally := cfg.get("tally"):
+        # each thing on its own with a way out: one pick among them split a group's dog and stroller (#14)
+        for i, what in enumerate(tally["things"].values(), 1):
+            args += ["--choice", f"thing{i}=In these images, is there {what}?:"
+                     "yes it is clearly visible,no there is none,too dark or small or hidden to tell"]
+        args += ["--choice", "where=Where do the people in these images go?:" + ",".join(tally["where"].values()),
+                 "--choice", "pace=Compare body posture and how far people move between consecutive images. "
+                             "Are they:" + ",".join(tally["pace"].values()),
+                 "--choice", "count=How many different people appear across the images?:0,1,2,3,4,5 or more"]
     if cfg.get("animals_list"):
         args += ["--yesno", "animal=Is an animal visible in any image?",
                  "--choice", "kind=What kind of animal is it?:" + ",".join(cfg["animals_list"])]
@@ -104,6 +113,25 @@ def _people(cfg, a, t):
     return f"{who} {'was' if one else 'were'} spotted."
 
 
+def _tally(cfg, a, t):
+    """'2 people: walking a dog; pushing a stroller.' for a public view: strangers, by what was seen."""
+    tally, c = cfg["tally"], a["count"]
+    n = c["choice"] if c["confidence"] >= t["sure"] and c["choice"] != "0" else ""
+    done = [act for i, act in enumerate(tally["things"], 1)
+            if a[f"thing{i}"]["choice"].startswith("yes") and a[f"thing{i}"]["confidence"] >= t["thing_sure"]]
+    picked = {}
+    for key in ("where", "pace"):
+        act = {q: act for act, q in tally[key].items()}.get(a[key]["choice"])
+        if act and a[key]["confidence"] >= t["act_sure"]:
+            picked[key] = act
+    # each list's first entry is the ordinary case (passing by, walking): said only when nothing else is
+    done += [act for key, act in picked.items() if act != next(iter(tally[key])) and act not in done]
+    if not done and picked.get("where") == next(iter(tally["where"])):
+        done.append(picked["where"])
+    who = "Someone" if not n else ("1 person" if n == "1" else f"{n} people")
+    return f"{who}: {'; '.join(done)}." if done else f"{who} {'was' if n in ('', '1') else 'were'} spotted."
+
+
 def _vehicle(cfg, a, t):
     """'A van is parking at the near curb.', or '' for ordinary traffic and for vehicles that never move."""
     if a["vmove"]["answer"] != "yes" or a["vmove"]["confidence"] < t["sure"]:
@@ -163,7 +191,9 @@ def message(cfg, t, answers, trigger):
     fb = cfg["fallback"] if "fallback" in cfg else f"{trigger} detected"
     parts, door = [], ""
     if a is not None:
-        if cfg.get("actions_list") and a["person"]["answer"] == "yes":
+        if cfg.get("tally") and a["person"]["answer"] == "yes":
+            parts.append(_tally(cfg, a, t))
+        elif cfg.get("actions_list") and a["person"]["answer"] == "yes":
             parts.append(_people(cfg, a, t))
         if cfg.get("animals_list") and a["animal"]["answer"] == "yes" and a["animal"]["confidence"] >= t["sure"]:
             parts.append(_animal(a, t))

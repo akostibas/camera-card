@@ -1,0 +1,170 @@
+#!/usr/bin/env -S uv run -q --script
+# /// script
+# requires-python = ">=3.13"
+# dependencies = ["pyyaml"]
+# ///
+"""File real camera recordings as labeled test data, and add notes about what is in them.
+
+  bin/testdata import CAMERA RESPONSE.json [--video HLS_NAME]   copy a recording's pictures from the host
+  bin/testdata note PATH --by WHO --for ISSUE < FIELDS.yaml      add a note to a picture or a recording
+  bin/testdata todo RECORDING --for ISSUE                        what in a recording still lacks a note for ISSUE
+  bin/testdata list                                              recordings filed, and the space they use
+
+The library is testdata/ in the main checkout (gitignored: this repo is public and the pictures show
+the house). One folder per recording, testdata/CAMERA/START/, holding:
+  kNN.jpg + kNN.yaml   each keyframe, and notes on it (`time`: seconds into the recording)
+  clip.yaml            notes on the recording as a whole (`seen`: when the person sensor was on)
+  clip.mp4             the low-res recording, when imported with --video
+
+Notes only ever grow: `note` appends {by, on, for, ...FIELDS} and never rewrites earlier notes, so
+several stories can label the same pictures. A correction is a later note saying `supersedes: DATE BY`.
+
+RESPONSE.json is what reolink.save_keyframes returned when called with `focus` and `pictures` larger
+than the recording (so every keyframe comes back, with `times` and `seen`), plus "start": the ISO time
+it was called with. The host to copy from is HA_SSH in .dev-push.env. The library stops at 250 MB.
+"""
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from datetime import date
+from pathlib import Path
+
+import yaml
+
+LIMIT = 250 * 2**20
+MAIN = Path(subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                           capture_output=True, text=True, check=True, cwd=Path(__file__).parent).stdout.strip()).parent
+LIB = MAIN / "testdata"
+HOST_CACHE = "/opt/homeassistant/cache"  # the container's /cache
+
+
+def die(msg):
+    sys.exit(f"testdata: {msg}")
+
+
+def size(p):
+    return sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.exists() else 0
+
+
+def env(key):
+    f = MAIN / ".dev-push.env"
+    for line in f.read_text().splitlines() if f.exists() else []:
+        if line.startswith(f"{key}="):
+            return line.split("=", 1)[1].strip().strip('"')
+    die(f"put {key}=<ssh name of the Home Assistant host> in {f}")
+
+
+def load(p):
+    return (yaml.safe_load(p.read_text()) or {}) if p.exists() else {}
+
+
+def dump(p, d):
+    p.write_text(yaml.safe_dump(d, sort_keys=False, allow_unicode=True, width=110))
+
+
+def cmd_import(a):
+    r = json.loads(Path(a.response).read_text())
+    if "dir" in r and "files" not in r:  # the short form: k01.jpg..kNN.jpg in dir
+        r["files"] = [f"{r['dir']}/k{i:02d}.jpg" for i in range(1, r["n"] + 1)]
+    if not {"files", "times", "seen", "start"} <= r.keys():
+        die("RESPONSE.json needs files, times and seen (call save_keyframes with focus) and start")
+    if len(r["files"]) != len(r["times"]):
+        die("files and times differ in length")
+    dest = LIB / a.camera / r["start"][:19].replace(":", "-")
+    if dest.exists():
+        die(f"{dest} is already filed; add notes to it instead")
+    host = env("HA_SSH")
+    LIB.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=LIB, prefix=".incoming-") as tmp:  # inside the ignored folder
+        t = Path(tmp)
+        srcs = [f.replace("/cache", HOST_CACHE, 1) for f in r["files"]]
+        def fetch(remote_dir, names, into):  # one connection: scp opens one per file
+            into.mkdir(exist_ok=True)
+            # Shared connection: one 1Password approval covers every import for the next 2h.
+            tar = subprocess.Popen(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ControlMaster=auto",
+                                    "-o", "ControlPath=~/.ssh/cm-%C", "-o", "ControlPersist=2h", host, "tar", "-C", remote_dir, "-cf", "-", *names], stdout=subprocess.PIPE)
+            subprocess.run(["tar", "-C", str(into), "-xf", "-"], stdin=tar.stdout, check=True)
+            if tar.wait():
+                die(f"copying from {host}:{remote_dir} failed")
+        dirs = {str(Path(s).parent) for s in srcs}
+        if len(dirs) != 1:
+            die("pictures come from more than one folder")
+        fetch(dirs.pop(), [Path(s).name for s in srcs], t)
+        if a.video:
+            fetch(f"{HOST_CACHE}/reolink_hls", [a.video], t)
+            os.rename(t / a.video, t / "hls")
+            subprocess.run(["ffmpeg", "-v", "error", "-i", str(t / "hls/index.m3u8"), "-c", "copy",
+                            str(t / "clip.mp4")], check=True)
+            shutil.rmtree(t / "hls")
+        if size(LIB) + size(t) > LIMIT:
+            die(f"would take the library past {LIMIT >> 20} MB ({size(LIB) >> 20} MB used); talk it over first")
+        for f, time in zip(srcs, r["times"]):
+            stem = Path(f).stem
+            dump(t / f"{stem}.yaml", {"time": round(time, 2), "notes": []})
+        dump(t / "clip.yaml", {"camera": a.camera, "start": r["start"], "seen": r["seen"],
+                               "pictures": len(srcs), "notes": []})
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(t, dest)
+    os.chmod(dest, 0o755)
+    print(f"filed {dest} ({size(dest) >> 20} MB; library {size(LIB) >> 20} of {LIMIT >> 20} MB)")
+
+
+def cmd_note(a):
+    p = Path(a.path)
+    if not p.is_absolute() and not p.exists():
+        p = LIB / p  # street/2026-11-26T15-16-21/k07
+    meta = p if p.suffix == ".yaml" else (p / "clip.yaml" if p.is_dir() else p.parent / f"{p.stem}.yaml")
+    if not meta.exists():
+        die(f"no {meta}: notes go on pictures and recordings that were imported")
+    fields = yaml.safe_load(sys.stdin.read()) or {}
+    if not isinstance(fields, dict):
+        die("FIELDS.yaml must be a mapping")
+    d = load(meta)
+    d.setdefault("notes", []).append({"by": a.by, "on": date.today().isoformat(), "for": getattr(a, "for"), **fields})
+    dump(meta, d)
+    print(f"{meta}: {len(d['notes'])} notes")
+
+
+def cmd_todo(a):
+    rec = Path(a.recording) if Path(a.recording).is_dir() else LIB / a.recording
+    if not (rec / "clip.yaml").exists():
+        die(f"no recording at {rec}")
+    has = lambda m: any(n.get("for") == getattr(a, "for") for n in load(m).get("notes", []))  # noqa: E731
+    left = [m.stem for m in sorted(rec.glob("k*.yaml")) if not has(m)]
+    left += ["(the recording itself)"] if not has(rec / "clip.yaml") else []
+    print(f"{len(left)} still need a note for {getattr(a, 'for')}: {' '.join(left)}" if left else "all noted")
+
+
+def cmd_list(_):
+    for clip in sorted(LIB.glob("*/*/clip.yaml")):
+        d = load(clip)
+        noted = sum(bool(load(m).get("notes")) for m in clip.parent.glob("k*.yaml"))
+        print(f"{clip.parent.relative_to(LIB)}  {noted}/{d.get('pictures')} pictures noted  "
+              f"{len(d.get('notes', []))} recording notes  "
+              f"{size(clip.parent) >> 20} MB")
+    print(f"library: {size(LIB) >> 20} of {LIMIT >> 20} MB at {LIB}")
+
+
+p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+sub = p.add_subparsers(required=True)
+s = sub.add_parser("import")
+s.add_argument("camera")
+s.add_argument("response")
+s.add_argument("--video", help="the recording's folder name under the host's reolink_hls cache")
+s.set_defaults(fn=cmd_import)
+s = sub.add_parser("note")
+s.add_argument("path")
+s.add_argument("--by", required=True)
+s.add_argument("--for", required=True)
+s.set_defaults(fn=cmd_note)
+s = sub.add_parser("todo")
+s.add_argument("recording")
+s.add_argument("--for", required=True)
+s.set_defaults(fn=cmd_todo)
+sub.add_parser("list").set_defaults(fn=cmd_list)
+a = p.parse_args()
+a.fn(a)

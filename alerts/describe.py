@@ -30,10 +30,10 @@ from message import message, questions, seen
 LEVELS = ("push", "event", "motion")  # each describes everything the one before it does
 
 
-def ask(cfg, files):
+def ask(cfg, files, timeout=15):
     """The model's answers about these pictures, keyed by question. Paid."""
     out = subprocess.run(["ask-gemini", "decide", *questions(cfg, files)],
-                         capture_output=True, text=True, check=True, timeout=15).stdout
+                         capture_output=True, text=True, check=True, timeout=timeout).stdout
     return {k: v for k, v in json.loads(out).items() if isinstance(v, dict)}
 
 
@@ -41,6 +41,7 @@ def named(cfg, answers):
     """Answers as (readable question, answer, confidence), e.g. ('leaving through the gate', 'yes', 0.9)."""
     names = {f"act{i}": act for i, act in enumerate(cfg.get("actions_list", []), 1)}
     names |= {f"vact{i}": f"vehicle {act}" for i, act in enumerate(cfg.get("vehicle_actions_list", []), 1)}
+    names |= {f"thing{i}": act for i, act in enumerate((cfg.get("tally") or {}).get("things", []), 1)}
     return [(names.get(k, k), v.get("answer") or v.get("choice"), v["confidence"]) for k, v in answers.items()]
 
 

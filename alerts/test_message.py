@@ -105,7 +105,17 @@ def demo():
 
     # Street: only a vehicle that moves is news, named as far as the model is sure.
     street = "street"
-    nobody = {"person": q("no", 0.9), **doing(street)}
+    tally = CAMERAS[street]["tally"]
+
+    def seen_doing(n="1", where="walking by", pace="walking", **things):
+        """Tally answers: each thing 'no' unless named with its confidence, one pick for where and pace."""
+        want = {k.replace("_", " "): c for k, c in things.items()}
+        assert set(want) <= set(tally["things"]), set(want) - set(tally["things"])
+        return {"person": q("yes", 0.97), "count": q(n, 0.8),
+                "where": q(tally["where"][where], 0.8), "pace": q(tally["pace"][pace], 0.8),
+                **{f"thing{i}": q("yes it is clearly visible", want[t]) if t in want else q("no there is none", 0.9)
+                   for i, t in enumerate(tally["things"], 1)}}
+    nobody = {**seen_doing(), "person": q("no", 0.9)}
 
     def traffic(kind, sure=0.9, moving=("yes", 0.9), **yes):
         return {**nobody, "vmove": q(*moving), "vkind": q(kind, sure), **doing(street, "vact", **yes)}
@@ -124,11 +134,19 @@ def demo():
     assert render(street, both_curbs, "Vehicle") == "A car is parking at the near curb."
     still = traffic("no vehicle moves", moving=("no", 0.9))
     assert render(street, still, "Vehicle") == "Vehicle detected, but it looks like a false alarm."
-    # Smoking needs more than a lukewarm yes.
-    walker = {**still, **adult, **doing(street, walking_a_dog=0.9, smoking=0.7)}
-    assert render(street, walker) == "An adult is walking a dog."
-    driver = {**traffic("car", pulling_away_from_the_near_curb=0.8), **adult, **doing(street, getting_into_a_car=0.8)}
-    assert render(street, driver) == "An adult is getting into a car. A car is pulling away from the near curb."
+    # People in the street: counted, with what they did. A thing needs a near-certain yes (#14).
+    def people(**kw):
+        return render(street, {**still, **seen_doing(**kw)})
+    assert people() == "1 person: walking by."
+    assert people(n="2", walking_a_dog=0.98, pushing_a_stroller=0.96) == "2 people: walking a dog; pushing a stroller."
+    assert people(pulling_a_cart=0.93, delivering_a_package=0.86) == "1 person: pulling a cart.", "0.86 was an invented one"
+    # Walking by is said only alone; the same activity from two questions is said once.
+    assert people(n="2", walking_a_dog=0.97, where="walking up to the house") == "2 people: walking a dog; walking up to the house."
+    assert people(riding_a_bike=0.93, pace="riding a bike") == "1 person: riding a bike."
+    assert people(n="0", pace="jogging") == "Someone: jogging."
+    assert render(street, {**still, **seen_doing(), "where": q("no such place", 0.9)}) == "1 person was spotted."
+    driver = {**traffic("car", pulling_away_from_the_near_curb=0.8), **seen_doing(where="getting into or out of a car")}
+    assert render(street, driver) == "1 person: getting into or out of a car. A car is pulling away from the near curb."
 
     # Model down: plain wording.
     assert render(door, None) == "Someone is at the door."
