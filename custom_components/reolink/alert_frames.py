@@ -44,6 +44,7 @@ def _keyframes(media: bytes, parent: Path, width: int) -> tuple[list[str], list[
     parent.mkdir(parents=True, exist_ok=True)
     _prune(parent)
     out = Path(tempfile.mkdtemp(dir=parent))
+    out.chmod(0o755)  # mkdtemp makes it owner-only; bin/testdata copies pictures off the host over ssh
     to_mp4(media, f"{out}/clip.mp4")
     try:
         times = subprocess.run(["ffprobe", "-v", "error", "-skip_frame", "nokey", "-select_streams", "v:0",
@@ -53,7 +54,8 @@ def _keyframes(media: bytes, parent: Path, width: int) -> tuple[list[str], list[
                         "-vf", f"scale={width}:-2", "-fps_mode", "vfr", "-q:v", "4", f"{out}/k%02d.jpg"], check=True)
     finally:
         Path(f"{out}/clip.mp4").unlink(missing_ok=True)
-    files = [str(f) for f in sorted(out.glob("k*.jpg"))]
+    # by number: as text, k100 sorts before k11 and every picture past k10 gets another's time
+    files = [str(f) for f in sorted(out.glob("k*.jpg"), key=lambda f: int(f.stem[1:]))]
     if len(times) != len(files):
         raise OSError(f"{len(files)} keyframes but {len(times)} times")
     return files, [float(t) for t in times]
