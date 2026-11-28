@@ -10,6 +10,7 @@
 Results are appended to results.jsonl in the test library. TRUTH is from the street recordings' notes.
 """
 import json
+import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -35,6 +36,14 @@ TRUTH = {
     "2026-11-26T15-16-21": ({"trolley"}, {"walk"}),
     "2026-11-26T16-33-03": ({"walk"}, set()),
     "2026-11-26T17-00-49": ({"walk"}, set()),
+    "2026-11-28T09-47-19": ({"dog"}, {"walk"}),
+    "2026-11-27T16-57-11": ({"dog", "stroller"}, {"walk"}),
+    "2026-11-27T16-23-39": ({"dog", "stroller"}, {"walk"}),
+    "2026-11-27T09-29-33": ({"dog"}, {"walk"}),
+    "2026-11-18T06-55-47": ({"dog"}, {"walk"}),
+    "2026-11-17T17-04-17": ({"dog", "walk"}, set()),  # one walker with a dog, one without
+    "2026-11-17T12-00-00": ({"dog", "bike"}, {"walk"}),
+    "2026-11-17T11-53-21": ({"dog"}, {"walk"}),
 }
 SURE = 0.6
 
@@ -99,6 +108,32 @@ EVIDENCE = {  # object-presence yes/no with an explicit veto for shadow
     "walk": "Does anyone simply walk along the sidewalk or street past the house?",
 }
 
+THINGS = {  # each thing on its own, mutually exclusive with "can't tell", so a group's two things both count
+    "dog": "a live dog with a person",
+    "stroller": "a baby stroller or pram being pushed",
+    "trolley": "a wheeled shopping trolley, cart or rolling suitcase being pulled or pushed",
+    "trash": "a wheeled trash or recycling bin being moved",
+    "delivery": "a package or mail being carried toward the house",
+    "bike": "someone riding a bicycle or scooter",
+}
+
+
+def each_args():
+    args = []
+    for k, what in THINGS.items():
+        args += ["--choice", f"{k}=In these images, is there {what}?:yes it is clearly visible,no there is none,"
+                 "too dark or small or hidden to tell"]
+    return args + ["--choice", WHERE_Q, "--choice", PACE_Q]
+
+
+def each_claims(a, thing_sure=None):
+    out = {k for k in THINGS if a[k]["choice"].startswith("yes") and a[k]["confidence"] >= (thing_sure or SURE)}
+    for key, m in (("where", WHERE_MAP), ("pace", PACE_MAP)):
+        if a[key]["confidence"] >= SURE and a[key]["choice"] in m:
+            out.add(m[a[key]["choice"]])
+    return out
+
+
 PERSON_OPTS = list(MAIN) + ["there is no such person"]
 
 
@@ -130,15 +165,27 @@ VARIANTS = {
     "evidence": (lambda: [x for k, q in EVIDENCE.items() for x in ("--yesno", f"{k}={q}")],
                  lambda a: {k for k in EVIDENCE if a[k]["answer"] == "yes" and a[k]["confidence"] >= SURE},
                  [], False),
+    "each": (each_args, each_claims, [], False),
+    "each2": (each_args, each_claims, [], False),
+    # real things scored >= 0.93, invented ones <= 0.86 (2026-11-28): only a near-certain yes counts
+    "each_strict": (each_args, lambda a: each_claims(a, 0.9), [], False),
     "person": (person_args, person_claims, [], False),
 }
 
 
+def labeled_seen(notes):
+    """Stand-in sensor windows from the labels, for recordings older than the sensor's history."""
+    on = [n["time"] for n in notes if any(x.get("people") for x in n.get("notes", []))]
+    return [(t - 1.0, t + 1.0) for t in on]
+
+
 def frames(rec, crop):
     clip = yaml.safe_load((rec / "clip.yaml").read_text())
-    pics = sorted(rec.glob("k*.jpg"))
-    times = [yaml.safe_load(p.with_suffix(".yaml").read_text())["time"] for p in pics]
-    files = [pics[i] for i in pick(times, [tuple(w) for w in clip["seen"]], 16)]
+    pics = sorted(rec.glob("k*.jpg"), key=lambda p: int(p.stem[1:]))
+    notes = [yaml.safe_load(p.with_suffix(".yaml").read_text()) for p in pics]
+    times = [n["time"] for n in notes]
+    seen = [tuple(w) for w in clip["seen"]] or labeled_seen(notes)
+    files = [pics[i] for i in pick(times, seen, 16)]
     if not crop:
         return [str(f) for f in files]
     out = HERE / "crops" / rec.name
@@ -175,6 +222,9 @@ def score_saved(path):
 def main():
     if sys.argv[2].endswith(".json"):
         return score_saved(sys.argv[2])
+    # ask-gemini runs its key command per call: one 1Password prompt per picture set otherwise
+    if not os.environ.get("GEMINI_API_KEY") and (cmd := os.environ.get("ASK_GEMINI_KEY_COMMAND")):
+        os.environ["GEMINI_API_KEY"] = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=True).stdout.strip()
     jobs = [(v, LIB / r) for v in sys.argv[2].split(",") for r in TRUTH]
     with ThreadPoolExecutor(8) as pool:
         res = list(pool.map(lambda j: run(*j), jobs))

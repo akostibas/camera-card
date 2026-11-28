@@ -17,3 +17,17 @@
 - The four-choice set scored 0/0 on all four repeats, including at high and ultra-high resolution: resolution isn't the limit.
 - Smoking was always "too backlit to tell"; no recording with smoking yet, so it's set aside.
 - Not yet tested: dogs, strollers, mixed groups (one choice per question may under-report a group doing two things).
+
+## 2026-11-28: dogs, strollers, a cyclist
+
+Eight more labeled recordings (6 dog walkers, the same couple with 2 dogs and a stroller twice, a cyclist), 14 in all. The three from 11-17 had no person-sensor history left, so their 16 pictures are picked around the labeled people instead.
+
+| Questions | Missed | Invented |
+|---|---|---|
+| Today's yes/no, high resolution | 1 | 3 |
+| Four choices (above), 2 runs | 5 each | 0 |
+| Each thing on its own (yes / no / too dark to tell), 2 runs | 0 | 7 each |
+| Same, a thing counts only at ≥ 0.9 confidence, 3 runs | 0 | 0, 0, 1 |
+
+- The four choices fail on groups: dog vs stroller splits the confidence (~0.5 each) and neither is reported. The cyclist is lost the same way (pace picks the dog walker's "walking").
+- Asked one at a time, every real thing scored ≥ 0.93 and every invented one ≤ 0.86; the one slip at 0.9 was the trolley woman's trolley read as a trash bin (0.91). The cutoff was chosen on these same 14 recordings, so the margin is thin.
