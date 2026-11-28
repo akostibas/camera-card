@@ -31,3 +31,4 @@ Eight more labeled recordings (6 dog walkers, the same couple with 2 dogs and a 
 
 - The four choices fail on groups: dog vs stroller splits the confidence (~0.5 each) and neither is reported. The cyclist is lost the same way (pace picks the dog walker's "walking").
 - Asked one at a time, every real thing scored ≥ 0.93 and every invented one ≤ 0.86; the one slip at 0.9 was the trolley woman's trolley read as a trash bin (0.91). The cutoff was chosen on these same 14 recordings, so the margin is thin.
+- Built into the alert (people: tally, full production questions, 14 recordings): every activity right, none invented, once "moving trash cans" left the each-thing questions (the trolley read as a bin at 0.91; no real trash-day recording to test it on). It is still asked in "where do they go". Headcounts run low when the second person passes minutes after the first (3 of 14).

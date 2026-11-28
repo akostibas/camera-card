@@ -11,6 +11,7 @@ Recordings come from the test library (bin/testdata). Each sends the same 16 pic
 people_count; a note by someone other than a model wins over a model's.
 """
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -37,7 +38,15 @@ def truth(rec):
     return best.get("people_count"), best.get("by"), [f"{p.get('looks')}: {', '.join(p.get('doing', []))}" for p in people]
 
 
+def labeled_seen(notes):
+    """Stand-in sensor windows from the labels, for recordings older than the sensor's history."""
+    return [(n["time"] - 1.0, n["time"] + 1.0) for n in notes if any(x.get("people") for x in n.get("notes", []))]
+
+
 def main(argv):
+    # ask-gemini runs its key command per call: one 1Password prompt per recording otherwise
+    if not os.environ.get("GEMINI_API_KEY") and (cmd := os.environ.get("ASK_GEMINI_KEY_COMMAND")):
+        os.environ["GEMINI_API_KEY"] = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=True).stdout.strip()
     save = argv[argv.index("--save") + 1] if "--save" in argv else None
     argv = [a for i, a in enumerate(argv) if a != "--save" and (i == 0 or argv[i - 1] != "--save")]
     settings_path, camera, *only = argv
@@ -48,9 +57,10 @@ def main(argv):
         if only and rec.name not in only or not (rec / "clip.yaml").exists():
             continue
         clip = yaml.safe_load((rec / "clip.yaml").read_text())
-        pics = sorted(rec.glob("k*.jpg"))
-        times = [yaml.safe_load(p.with_suffix(".yaml").read_text())["time"] for p in pics]
-        files = [str(pics[i]) for i in pick(times, [tuple(w) for w in clip["seen"]], 16)]
+        pics = sorted(rec.glob("k*.jpg"), key=lambda p: int(p.stem[1:]))
+        notes = [yaml.safe_load(p.with_suffix(".yaml").read_text()) for p in pics]
+        seen = [tuple(w) for w in clip["seen"]] or labeled_seen(notes)
+        files = [str(pics[i]) for i in pick([n["time"] for n in notes], seen, 16)]
         answers = ask(cfg, files, timeout=90)  # uploading from here is slower than from the host
         text = message(cfg, t, answers, "Person")
         count, by, people = truth(rec)

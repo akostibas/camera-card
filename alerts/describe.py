@@ -41,6 +41,7 @@ def named(cfg, answers):
     """Answers as (readable question, answer, confidence), e.g. ('leaving through the gate', 'yes', 0.9)."""
     names = {f"act{i}": act for i, act in enumerate(cfg.get("actions_list", []), 1)}
     names |= {f"vact{i}": f"vehicle {act}" for i, act in enumerate(cfg.get("vehicle_actions_list", []), 1)}
+    names |= {f"thing{i}": act for i, act in enumerate((cfg.get("tally") or {}).get("things", []), 1)}
     return [(names.get(k, k), v.get("answer") or v.get("choice"), v["confidence"]) for k, v in answers.items()]
 
 

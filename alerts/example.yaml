@@ -6,6 +6,7 @@ thresholds:
   sure: 0.5         # who, how many, that there is an animal, that a door is open
   maybe: 0.3        # an animal's kind, said as "maybe a rat"
   act_sure: 0.6     # an activity; a weaker yes is said as "maybe", and only if nothing is sure
+  thing_sure: 0.9   # a tally's thing (a dog, a stroller): real ones scored >= 0.93, invented <= 0.86
   sex_sure: 0.7     # "a man" / "a woman"; below this it stays "an adult"
   car_sure: 0.6     # which car, and that it is coming or going; below this "a car may be"
   false_alarm: 0.8  # that nobody is there, said as "looks like a false alarm"
@@ -37,6 +38,10 @@ tuning:
 #   scene          one-line description of the view, sent with the pictures
 #   actions_list   ask who is there and what they are doing. Entries must read after "is", in the
 #                  order they would happen; the last is the generic fallback
+#   tally          for a public view: count the people and list what they did, e.g. "2 people: walking
+#                  a dog; pushing a stroller." Instead of actions_list. {things, where, pace}, each
+#                  {what to say: what to ask}. Each thing is asked on its own; where and pace are one
+#                  pick each, and their first entry (passing by, walking) is said only alone
 #   max_actions    how many activities one alert may report (default 2)
 #   action_min     {activity: confidence} for activities that need more than a bare yes
 #   animals_list   ask whether there is an animal and what kind
@@ -94,13 +99,23 @@ cameras:
       Camera by a front door, looking across the front yard at the street. The near curb is on
       this side of the street and the far curb is across it. Vehicles are usually parked at both.
     describe: event
-    actions_list:
-      - getting out of a car
-      - walking a dog
-      - smoking
-      - getting into a car
-      - walking by
-    action_min: {smoking: 0.8}  # a small detail at this distance
+    tally:
+      things:
+        walking a dog: a live dog with a person
+        pushing a stroller: a baby stroller or pram being pushed
+        pulling a cart: a wheeled shopping trolley, cart or rolling suitcase being pulled or pushed
+        delivering a package: a package or mail being carried toward the house
+        riding a bike: someone riding a bicycle or scooter
+      where:
+        walking by: they stay on the public sidewalk or street passing by
+        walking up to the house: at least one walks up the front steps toward the house
+        getting into or out of a car: at least one goes to or gets into or out of a parked car
+        moving trash cans: at least one moves trash bins between the house and the curb
+      pace:
+        walking: walking at a normal pace
+        jogging: jogging or running
+        standing around: standing still
+        riding a bike: riding a bike or scooter
     vehicles_list: [car, pickup truck, van, motorcycle, bicycle, trash truck]
     vehicle_actions_list:
       - parking at the near curb
