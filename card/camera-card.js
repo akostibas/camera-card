@@ -594,7 +594,11 @@ function mount(host, config) {
   $('#bspeed').onclick = () => { S.speed = { 1: 2, 2: 4, 4: 1 }[S.speed]; vid.playbackRate = S.speed; draw(); };
   seekEl.addEventListener('input', () => { S.seeking = true; seek(+seekEl.value); });
   seekEl.addEventListener('change', () => { S.seeking = false; });
-  $('#video').addEventListener('click', () => S.view.mode === 'live' ? $('#video').classList.remove('max') : $('#bplay').click());
+  // taps on the flag and its note box aren't taps on the video
+  $('#video').addEventListener('click', (e) => {
+    if (e.target.closest('#bflag, #fnote')) return;
+    S.view.mode === 'live' ? $('#video').classList.remove('max') : $('#bplay').click();
+  });
   $('#bfull').innerHTML = svg('full');
   // The live <video> sits inside HA's player, behind open shadow roots.
   const streamVideo = (n = liveBox) => { for (const c of [...(n.shadowRoot?.children || []), ...n.children]) { if (c.tagName === 'VIDEO' && c.readyState >= 2) return c; const v = streamVideo(c); if (v) return v; } };
